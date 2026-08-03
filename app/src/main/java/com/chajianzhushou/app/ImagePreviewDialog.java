@@ -74,6 +74,8 @@ public class ImagePreviewDialog extends Dialog {
     private TextView zoomIndicator;
     private TextView btnCompare;
     private boolean showingCompare = false;
+    // 签名 URL 过期时允许"重新解析并重试"的次数上限（防极端情况下无限重试）
+    private int urlRefreshBudget = 2;
 
     // 当前正在展示的预览对话框（供自动刷新发现换新照片时同步刷新大图）
     private static volatile ImagePreviewDialog sActiveDialog;
@@ -523,10 +525,13 @@ public class ImagePreviewDialog extends Dialog {
             return;
         }
 
-        // 1) 优先查磁盘缓存（仅原图；对比图避免与单号缓存文件冲突，走内存+网络）
-        if (!showingCompare) {
-            java.io.File diskFile = (trackingNo != null && trackingNo.length() > 0)
-                    ? ImageCacheManager.getCachedFile(trackingNo, url) : null;
+        // 磁盘缓存 key：主图=单号；对比图="单号_cmp"（分开缓存，避免与主图互相覆盖）
+        final String cacheKey = (trackingNo != null && trackingNo.length() > 0)
+                ? (showingCompare ? trackingNo + "_cmp" : trackingNo) : "";
+
+        // 1) 优先查磁盘缓存（主图/对比图各自独立缓存；URL 校验：出库换新照片后旧图自动作废）
+        if (cacheKey.length() > 0) {
+            java.io.File diskFile = ImageCacheManager.getCachedFile(cacheKey, url);
             if (diskFile != null) {
                 try {
                     Bitmap bmp = BitmapFactory.decodeFile(diskFile.getAbsolutePath());
@@ -539,10 +544,10 @@ public class ImagePreviewDialog extends Dialog {
                         return;
                     }
                     // 解码失败 → 磁盘缓存文件可能损坏，删除它以允许后续重新下载
-                    Log.w("ImgPreview", "磁盘缓存解码失败，删除损坏文件: " + trackingNo);
+                    Log.w("ImgPreview", "磁盘缓存解码失败，删除损坏文件: " + cacheKey);
                     diskFile.delete();
                 } catch (Exception e) {
-                    Log.w("ImgPreview", "磁盘缓存解码异常: " + trackingNo + " " + e.getMessage());
+                    Log.w("ImgPreview", "磁盘缓存解码异常: " + cacheKey + " " + e.getMessage());
                     try { diskFile.delete(); } catch (Exception ignored) {}
                 }
             }
@@ -559,17 +564,19 @@ public class ImagePreviewDialog extends Dialog {
             }
             return;
         }
-        // 3) 网络下载兜底
-        final String fallbackTrackingNo = trackingNo;
+        // 3) 网络下载兜底（对比图也写入磁盘缓存，签名 URL 过期后仍可从缓存显示）
+        final String fallbackCacheKey = cacheKey;
         loader.loadFull(url, iv, 0, bitmap -> {
             if (pb != null) pb.setVisibility(View.GONE);
             if (bitmap != null) ensureBaseMatrix();
             if (bitmap == null) {
-                // 网络下载失败（URL 可能已过期），延迟 2 秒再查一次磁盘缓存
-                // 场景：缩略图首次下载尚未完成时用户就点击了放大
-                if (fallbackTrackingNo != null && fallbackTrackingNo.length() > 0) {
+                // 网络下载失败（URL 可能已过期）：延迟 2 秒重查一次磁盘缓存
+                // （场景：缩略图首次下载尚未完成时用户就点击了放大）；
+                // 磁盘也没有 → 签名 URL 已过期，重新解析一个新 URL 再重试
+                final Runnable expiredAction = () -> tryRetryWithFreshUrl(currentIndex, url, showingCompare);
+                if (fallbackCacheKey.length() > 0) {
                     new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                        java.io.File retryFile = ImageCacheManager.getCachedFile(fallbackTrackingNo, url);
+                        java.io.File retryFile = ImageCacheManager.getCachedFile(fallbackCacheKey, url);
                         if (retryFile != null) {
                             try {
                                 Bitmap retryBmp = BitmapFactory.decodeFile(retryFile.getAbsolutePath());
@@ -580,18 +587,87 @@ public class ImagePreviewDialog extends Dialog {
                                 }
                             } catch (Exception ignored) {}
                         }
-                        // 彻底失败：提示用户
-                        try {
-                            Toast.makeText(getContext(), "图片加载失败，请稍后重试", Toast.LENGTH_SHORT).show();
-                        } catch (Exception ignored) {}
+                        expiredAction.run();
                     }, 2000);
                 } else {
-                    try {
-                        Toast.makeText(getContext(), "图片加载失败", Toast.LENGTH_SHORT).show();
-                    } catch (Exception ignored) {}
+                    expiredAction.run();
                 }
             }
-        });
+        }, cacheKey.length() > 0 ? cacheKey : null);
+    }
+
+    /**
+     * 签名 URL 疑似过期：从 URL 中提取原始文件路径（remoteFileId）重新解析一次并重试。
+     * 带次数上限（urlRefreshBudget），防止极端情况下无限重试。
+     */
+    private void tryRetryWithFreshUrl(final int idx, final String oldUrl, final boolean compare) {
+        if (urlRefreshBudget <= 0) {
+            try { Toast.makeText(getContext(), "图片加载失败，请稍后重试", Toast.LENGTH_SHORT).show(); } catch (Throwable ignored) {}
+            return;
+        }
+        urlRefreshBudget--;
+        try {
+            final Context c = getContext();
+            if (c == null) return;
+            final String rawPath = extractRemoteFileId(oldUrl);
+            final String billNo = (trackingNumbers != null && idx >= 0 && idx < trackingNumbers.size())
+                    ? trackingNumbers.get(idx) : "";
+            if (rawPath.isEmpty() || billNo.isEmpty()) {
+                try { Toast.makeText(c, "图片加载失败，请稍后重试", Toast.LENGTH_SHORT).show(); } catch (Throwable ignored) {}
+                return;
+            }
+            DirectApiClient dac = new DirectApiClient(c.getApplicationContext());
+            dac.resolveImageUrl(billNo, rawPath, new DirectApiClient.ImageUrlCallback() {
+                @Override
+                public void onUrl(final String newUrl) {
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        if (newUrl == null || newUrl.length() == 0 || newUrl.equals(oldUrl)) {
+                            try { Toast.makeText(getContext(), "图片加载失败，请稍后重试", Toast.LENGTH_SHORT).show(); } catch (Throwable ignored) {}
+                            return;
+                        }
+                        try {
+                            if (compare) {
+                                if (compareUrls != null && idx >= 0 && idx < compareUrls.size()) compareUrls.set(idx, newUrl);
+                            } else if (imageUrls != null && idx >= 0 && idx < imageUrls.size()) {
+                                imageUrls.set(idx, newUrl);
+                            }
+                            showingCompare = compare;
+                            loadCurrentImage();
+                        } catch (Throwable ignored) {}
+                    });
+                }
+
+                @Override
+                public void onError(String error) {
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        try { Toast.makeText(getContext(), "图片加载失败，请稍后重试", Toast.LENGTH_SHORT).show(); } catch (Throwable ignored) {}
+                    });
+                }
+            });
+        } catch (Throwable t) {
+            try { Toast.makeText(getContext(), "图片加载失败，请稍后重试", Toast.LENGTH_SHORT).show(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** 从 fs.zto.com / kdcs-file-storage 的签名 URL 中提取 remoteFileId（S3 原始路径），供过期后重新解析 */
+    private static String extractRemoteFileId(String url) {
+        try {
+            if (url == null || url.isEmpty()) return "";
+            int qi = url.indexOf('?');
+            if (qi < 0) return "";
+            String data = null;
+            for (String pair : url.substring(qi + 1).split("&")) {
+                int ei = pair.indexOf('=');
+                if (ei > 0 && "data".equals(pair.substring(0, ei))) {
+                    data = java.net.URLDecoder.decode(pair.substring(ei + 1), "UTF-8");
+                    break;
+                }
+            }
+            if (data == null || data.isEmpty()) return "";
+            return new org.json.JSONObject(data).optString("remoteFileId", "");
+        } catch (Throwable t) {
+            return "";
+        }
     }
 
     // ===== Matrix 缩放/平移辅助 =====
@@ -724,9 +800,12 @@ public class ImagePreviewDialog extends Dialog {
             return;
         }
         btnCompare.setVisibility(View.VISIBLE);
-        // 固定文案与切换状态一一对应，不再依赖数据推断的名称，避免"反了"
-        // 默认（显示卡片原图）→ "点击查看出库图片"；切换后（显示对比图）→ "返回查看入库图片"
-        btnCompare.setText(showingCompare ? "返回查看入库图片" : "点击查看出库图片");
+        // 按钮文案按"当前显示的是哪张图"动态变化：
+        // 当前显示入库图 → "点击查看出库图片"；显示的是出库图 → "点击查看入库图片"；
+        // 切换后同理显示"返回查看XX图片"。两张图都缺时不出现切换按钮。
+        btnCompare.setText(showingCompare
+                ? "返回查看" + primaryName(currentIndex)
+                : "点击查看" + compareName(currentIndex));
     }
 
     /** 点击切换：原图 ↔ 对比照片（入库照/出库照） */

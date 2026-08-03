@@ -62,6 +62,9 @@ public class SettingsFragment extends Fragment {
     private static final String KEY_GRID_MANUAL_ENABLED = "grid_manual_columns_enabled";
     private static final String KEY_GRID_MANUAL_COLUMNS_PORTRAIT = "grid_manual_columns_portrait";
     private static final String KEY_GRID_MANUAL_COLUMNS_LANDSCAPE = "grid_manual_columns_landscape";
+    private static final String KEY_IMAGE_CACHE_DAYS = "image_cache_days";
+    // 图片缓存过期天数选项（天）
+    private static final int[] IMAGE_CACHE_DAYS_VALUES = {7, 14, 21, 30};
     // 字号重建防抖：3 秒内最多重建一次，杜绝任何意外触发的无限重建循环
     private static volatile long sLastFontRecreateAt = 0L;
     // 界面字号档位：小/中/大/特大（相对系统字号的倍率）
@@ -159,6 +162,10 @@ public class SettingsFragment extends Fragment {
     private SwitchCompat switchGridManualColumns;
     private Spinner spinnerGridManualColumnsPortrait;
     private Spinner spinnerGridManualColumnsLandscape;
+
+    // Views - 缓存管理
+    private Spinner spinnerImageCacheDays;
+    private Button btnClearCache;
 
     // 定位权限申请使用 Activity Result API（替代已弃用的 requestPermissions/onRequestPermissionsResult）
     private final androidx.activity.result.ActivityResultLauncher<String[]> locationPermissionLauncher =
@@ -382,6 +389,52 @@ public class SettingsFragment extends Fragment {
                 }
                 Log.d(TAG, "手动每行卡片数开关: " + isChecked);
                 try { LogRecorder.info(requireContext(), "Settings", "手动每行卡片数开关", String.valueOf(isChecked)); } catch (Exception ignore) {}
+            });
+        }
+
+        // 图片缓存过期天数（7/14/21/30 天）
+        spinnerImageCacheDays = view.findViewById(R.id.spinner_image_cache_days);
+        if (spinnerImageCacheDays != null) {
+            java.util.List<String> cacheDayOptions = new java.util.ArrayList<>();
+            for (int v : IMAGE_CACHE_DAYS_VALUES) cacheDayOptions.add(v + " 天");
+            ArrayAdapter<String> cacheDayAdapter = new ArrayAdapter<>(
+                    requireContext(), R.layout.spinner_item, cacheDayOptions);
+            cacheDayAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
+            spinnerImageCacheDays.setAdapter(cacheDayAdapter);
+            spinnerImageCacheDays.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
+                    if (isLoadingSettings) return;
+                    int days = IMAGE_CACHE_DAYS_VALUES[Math.min(pos, IMAGE_CACHE_DAYS_VALUES.length - 1)];
+                    savePref(KEY_IMAGE_CACHE_DAYS, days);
+                    Log.d(TAG, "图片缓存过期天数: " + days);
+                    try { LogRecorder.info(requireContext(), "Settings", "图片缓存过期天数", days + " 天"); } catch (Exception ignore) {}
+                }
+                @Override public void onNothingSelected(AdapterView<?> parent) {}
+            });
+        }
+
+        // 一键清理缓存（图片磁盘+内存、日志）
+        btnClearCache = view.findViewById(R.id.btn_clear_cache);
+        if (btnClearCache != null) {
+            btnClearCache.setOnClickListener(v -> {
+                try {
+                    new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                            .setTitle("一键清理缓存")
+                            .setMessage("将清理：\n1. 包裹图片缓存（磁盘 + 内存）\n2. 运行日志\n确定清理吗？")
+                            .setPositiveButton("清理", (d, w) -> {
+                                try {
+                                    int img = ImageCacheManager.clearAll();
+                                    ImageLoader.clearCache();
+                                    LogRecorder.clearAllLogs(requireContext());
+                                    LogRecorder.info(requireContext(), "SETTINGS", "一键清理缓存", "图片文件=" + img);
+                                    safeToast("已清理图片缓存与日志");
+                                } catch (Throwable t) {
+                                    safeToast("清理失败: " + t.getMessage());
+                                }
+                            })
+                            .setNegativeButton("取消", null)
+                            .show();
+                } catch (Throwable ignore) {}
             });
         }
 
@@ -700,6 +753,8 @@ public class SettingsFragment extends Fragment {
         switchGridManualColumns = null;
         spinnerGridManualColumnsPortrait = null;
         spinnerGridManualColumnsLandscape = null;
+        spinnerImageCacheDays = null;
+        btnClearCache = null;
         apiService = null;
         mainHandler = null;
         ttsHelper = null;
@@ -1032,6 +1087,18 @@ public class SettingsFragment extends Fragment {
                         prefs.getInt(KEY_GRID_MANUAL_COLUMNS_PORTRAIT, 3), manual);
                 restoreGridColumnsSpinner(spinnerGridManualColumnsLandscape,
                         prefs.getInt(KEY_GRID_MANUAL_COLUMNS_LANDSCAPE, 4), manual);
+            }
+
+            // 图片缓存过期天数（7/14/21/30）
+            if (spinnerImageCacheDays != null) {
+                int days = prefs.getInt(KEY_IMAGE_CACHE_DAYS, 7);
+                int best = 0;
+                int bestDiff = Integer.MAX_VALUE;
+                for (int i = 0; i < IMAGE_CACHE_DAYS_VALUES.length; i++) {
+                    int diff = Math.abs(IMAGE_CACHE_DAYS_VALUES[i] - days);
+                    if (diff < bestDiff) { bestDiff = diff; best = i; }
+                }
+                spinnerImageCacheDays.setSelection(best);
             }
 
             // Mimo API Key

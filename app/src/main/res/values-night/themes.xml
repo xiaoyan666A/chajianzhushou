@@ -4,6 +4,8 @@
          注意：浅色模式强制 NIGHT uiMode，DayNight 主题会解析出"暗色"派生属性（白色文字/白色开关/白色控件），
          因此必须在此显式覆盖为浅色适用值，否则 Spinner 文字、开关、单选圈、输入框等会显示为白色看不清。 -->
     <style name="Theme.Chajianzhushou" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- 统一所有 AlertDialog 使用 App 风格对话框主题 -->
+        <item name="alertDialogTheme">@style/Theme.Chajianzhushou.Dialog</item>
         <item name="colorPrimary">@color/accent</item>
         <item name="colorPrimaryVariant">#FF00967F</item>
         <item name="colorOnPrimary">@color/bg</item>
@@ -31,5 +33,21 @@
         <item name="colorSwitchThumbNormal">@color/ink2</item>
         <item name="colorSurfaceVariant">@color/hair2</item>
         <item name="colorOutline">@color/hair2</item>
+    </style>
+
+    <!-- 管理员验证等对话框主题（浅色=values-night/） -->
+    <style name="Theme.Chajianzhushou.Dialog" parent="Theme.MaterialComponents.Dialog.Alert">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="colorSurface">@color/card_solid</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="android:textColorPrimary">@color/ink</item>
+        <item name="android:textColorSecondary">@color/ink2</item>
+        <item name="android:textColorHint">@color/muted</item>
+        <item name="colorControlNormal">@color/ink2</item>
+        <item name="colorControlActivated">@color/accent</item>
+        <item name="colorControlHighlight">@color/accent_12</item>
+        <item name="android:windowIsFloating">true</item>
     </style>
 </resources>

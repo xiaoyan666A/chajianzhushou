@@ -707,11 +707,13 @@ public class DirectApiClient {
                     item.optString("fileImgPath", ""),
                     item.optString("inSignImg", ""),
                     item.optString("imgName", ""));
-            // 出入库照片对比：分别暴露入库照(fileImgPath)与出库照/签收照(inSignImg)的原始路径
+            // 出入库照片对比（按兔喜官方数据核对）：inSignImg=入库签收照，fileImgPath=出库文件照
             String rawArrival = firstNonEmpty(
-                    item.optString("fileImgPath", ""),
+                    item.optString("inSignImg", ""),
                     item.optString("imgName", ""));
-            String rawOutbound = item.optString("inSignImg", "");
+            String rawOutbound = firstNonEmpty(
+                    item.optString("fileImgPath", ""),
+                    item.optString("outSignImg", ""));
             pkg.put("imageUrl", "");
             pkg.put("imgUrl", "");
             pkg.put("rawImgPath", rawImgPath);

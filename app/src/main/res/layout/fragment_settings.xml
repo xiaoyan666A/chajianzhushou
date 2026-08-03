@@ -655,6 +655,91 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- ===== 缓存管理卡片 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="缓存管理"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="图片缓存过期天数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="超过该天数的包裹图片自动清理"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_image_cache_days"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="84dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <Button
+                android:id="@+id/btn_clear_cache"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/btn_height_sm"
+                android:layout_marginTop="@dimen/spacing_lg"
+                android:background="@drawable/bg_btn_warning"
+                android:textColor="@color/warning"
+                android:textSize="@dimen/txt_base"
+                android:textStyle="bold"
+                android:text="一键清理缓存" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:text="清理本地包裹图片缓存与运行日志，释放存储空间"
+                android:layout_marginTop="@dimen/spacing_md" />
+        </LinearLayout>
+
         <!-- ===== 界面风格卡片 ===== -->
         <LinearLayout
             android:layout_width="match_parent"

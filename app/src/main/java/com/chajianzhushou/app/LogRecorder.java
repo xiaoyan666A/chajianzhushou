@@ -93,6 +93,21 @@ public class LogRecorder {
         return sInstance;
     }
 
+    /** 清空全部日志记录（在写线程执行，避免与写入并发冲突） */
+    public static void clearAllLogs(Context ctx) {
+        try {
+            final LogRecorder inst = getInstance(ctx == null ? MainActivity.getAppContext() : ctx);
+            if (inst == null) return;
+            inst.writeHandler.post(() -> {
+                try {
+                    SQLiteDatabase db = inst.writeDb;
+                    if (db == null) return;
+                    db.delete(TABLE_NAME, null, null);
+                } catch (Exception ignore) {}
+            });
+        } catch (Exception ignore) {}
+    }
+
     /**
      * 检查指定模块是否启用了日志输出。
      * APP 模块始终启用；其他模块从 SharedPreferences 读取独立开关。

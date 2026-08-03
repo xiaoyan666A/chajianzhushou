@@ -190,20 +190,56 @@
             android:gravity="center_vertical"
             android:layout_marginBottom="@dimen/pad_card_v">
 
-            <!-- 结果计数：占满剩余宽度，窄屏时单行省略 -->
-            <TextView
-                android:id="@+id/tv_result_count"
+            <!-- 结果计数：单chip内 = 前缀 + 超时出库文字（跑马灯边框只包住超时文字） -->
+            <LinearLayout
+                android:id="@+id/result_count_box"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:singleLine="true"
-                android:ellipsize="end"
-                android:textColor="@color/muted"
-                android:textSize="16sp"
-                android:text="0 个包裹"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_btn_back"
                 android:paddingHorizontal="@dimen/card_margin_bottom"
-                android:paddingVertical="@dimen/spacing_xs"
-                android:background="@drawable/bg_btn_back" />
+                android:paddingVertical="@dimen/spacing_xs">
+
+                <TextView
+                    android:id="@+id/tv_result_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    android:textColor="@color/muted"
+                    android:textSize="16sp"
+                    android:text="0 个包裹" />
+
+                <!-- 超时出库文字：跑马灯边框只包住这里 -->
+                <FrameLayout
+                    android:id="@+id/result_count_marquee"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    android:layout_marginStart="@dimen/spacing_xs">
+
+                    <TextView
+                        android:id="@+id/tv_result_timeout"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:singleLine="true"
+                        android:paddingStart="@dimen/spacing_xs"
+                        android:paddingEnd="@dimen/spacing_xs"
+                        android:paddingTop="1dp"
+                        android:paddingBottom="1dp"
+                        android:textColor="@color/warning"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:text="超时出库 0" />
+
+                    <com.chajianzhushou.app.FlowBorderView
+                        android:id="@+id/result_count_flow"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+                </FrameLayout>
+            </LinearLayout>
 
             <!-- 竖向排列 Toggle -->
             <LinearLayout

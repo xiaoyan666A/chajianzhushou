@@ -44,6 +44,12 @@ public class ImageLoader {
         return sInstance;
     }
 
+    /** 清空内存图片缓存（一键清理用） */
+    public static synchronized void clearCache() {
+        sCache.clear();
+        sCacheBytes = 0L;
+    }
+
     public void load(String url, ImageView target, int placeholderResId) {
         if (target == null) return;
         target.setImageResource(placeholderResId);
@@ -267,6 +273,16 @@ public class ImageLoader {
 
     /** 预览大图使用：无最大尺寸限制，允许 ARGB_8888；下载完成回调到主线程 */
     public void loadFull(final String url, final ImageView target, final int placeholderResId, final OnBitmapReadyListener listener) {
+        loadFull(url, target, placeholderResId, listener, null);
+    }
+
+    /**
+     * 预览大图使用（可携带磁盘缓存 key）：
+     * 对比图等不在卡片缩略图加载链路中的图片，下载后按 key 写入磁盘缓存，
+     * 避免签名 URL 过期后重新加载为空。
+     */
+    public void loadFull(final String url, final ImageView target, final int placeholderResId,
+                         final OnBitmapReadyListener listener, final String diskCacheKey) {
         if (target == null) return;
         target.setImageResource(placeholderResId);
         if (url == null || url.length() == 0) {
@@ -306,6 +322,10 @@ public class ImageLoader {
                 if (bytes == null || bytes.length == 0) {
                     mainHandler.post(() -> { if (listener != null) listener.onBitmapReady(null); });
                     return;
+                }
+                // 下载成功：按需写磁盘缓存（如对比图），避免签名 URL 过期后无法再显示
+                if (diskCacheKey != null && !diskCacheKey.isEmpty()) {
+                    ImageCacheManager.cacheBytes(diskCacheKey, url, bytes);
                 }
                 // 预览：默认不做过大下采样，只对 2048 以上做保护
                 Bitmap bitmap = decodeSampledBitmap(bytes, 2048, 2048);

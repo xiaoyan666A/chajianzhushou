@@ -1,6 +1,7 @@
 package com.chajianzhushou.app;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.util.Log;
 
 import java.io.File;
@@ -17,7 +18,9 @@ import java.io.OutputStream;
 public class ImageCacheManager {
     private static final String TAG = "ImgCache";
     private static final String CACHE_DIR = "pkg_images";
-    private static final long MAX_AGE_MS = 7L * 24 * 3600 * 1000; // 7天过期
+    private static final String KEY_CACHE_DAYS = "image_cache_days";
+    private static final int DEFAULT_CACHE_DAYS = 7;
+    private static final int MAX_CACHE_DAYS = 90;
 
     private static File sCacheDir;
 
@@ -41,6 +44,34 @@ public class ImageCacheManager {
         return sCacheDir;
     }
 
+    /** 读取设置"图片缓存过期天数"（1~90，默认7天），并换算为毫秒 */
+    private static long getMaxAgeMs() {
+        try {
+            Context ctx = MainActivity.getAppContext();
+            if (ctx == null) return DEFAULT_CACHE_DAYS * 24L * 3600 * 1000L;
+            SharedPreferences prefs = ctx.getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+            int days = prefs.getInt(KEY_CACHE_DAYS, DEFAULT_CACHE_DAYS);
+            if (days < 1) days = 1;
+            if (days > MAX_CACHE_DAYS) days = MAX_CACHE_DAYS;
+            return days * 24L * 3600 * 1000L;
+        } catch (Exception e) {
+            return DEFAULT_CACHE_DAYS * 24L * 3600 * 1000L;
+        }
+    }
+
+    /** 一键清理：删除磁盘缓存全部文件（含URL指纹），返回删除数量 */
+    public static synchronized int clearAll() {
+        File dir = ensureDir();
+        if (dir == null) return 0;
+        File[] files = dir.listFiles();
+        if (files == null) return 0;
+        int deleted = 0;
+        for (File f : files) {
+            if (f.isFile() && f.delete()) deleted++;
+        }
+        return deleted;
+    }
+
     /** 根据 billCode 获取缓存文件 */
     public static File getCachedFile(String billCode) {
         if (billCode == null || billCode.isEmpty()) return null;
@@ -49,7 +80,7 @@ public class ImageCacheManager {
         File f = new File(dir, billCode + ".jpg");
         if (f.exists() && f.length() > 0) {
             // 检查是否过期
-            if (System.currentTimeMillis() - f.lastModified() > MAX_AGE_MS) {
+            if (System.currentTimeMillis() - f.lastModified() > getMaxAgeMs()) {
                 f.delete();
                 deleteUrlMeta(billCode);
                 return null;
@@ -71,7 +102,7 @@ public class ImageCacheManager {
         if (dir == null) return null;
         File f = new File(dir, billCode + ".jpg");
         if (f.exists() && f.length() > 0) {
-            if (System.currentTimeMillis() - f.lastModified() > MAX_AGE_MS) {
+            if (System.currentTimeMillis() - f.lastModified() > getMaxAgeMs()) {
                 f.delete();
                 deleteUrlMeta(billCode);
                 return null;
@@ -170,7 +201,7 @@ public class ImageCacheManager {
         if (dir == null) return;
         File[] files = dir.listFiles();
         if (files == null) return;
-        long cutoff = System.currentTimeMillis() - MAX_AGE_MS;
+        long cutoff = System.currentTimeMillis() - getMaxAgeMs();
         int deleted = 0;
         for (File f : files) {
             if (f.isFile() && f.lastModified() < cutoff) {

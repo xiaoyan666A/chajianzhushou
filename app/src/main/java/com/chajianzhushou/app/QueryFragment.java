@@ -71,6 +71,12 @@ public class QueryFragment extends Fragment {
     private SwitchCompat switchShowDelivered;
     private SwitchCompat switchGridView;
     private TextView tvResultCount;
+    private TextView tvResultTimeout;
+    private FlowBorderView resultCountFlow;
+    private View resultCountMarquee;
+    private View resultCountBox;
+    // 是否已经执行过查询：未查询前整个结果数框（前缀+超时出库文字+跑马灯）保持隐藏
+    private boolean hasQueried = false;
     private LinearLayout resultsContainer;
     private LinearLayout historyPanel;
     private ProgressBar progressBar;
@@ -86,6 +92,8 @@ public class QueryFragment extends Fragment {
     private String searchType = "phoneTail";
     // 最后一次实际查询的值：清空输入框后，自动刷新仍按此值继续查询，列表不消失
     private String lastQueriedBillCode = "";
+    // 最后一次手动查询使用的类型：自动刷新固定用它，手动切换类型不影响已开始的自动刷新
+    private String lastQueriedType = "phoneTail";
     private boolean isGridView = false;
     private boolean showDelivered = true;
     private boolean isAutoRefresh = false;
@@ -102,7 +110,7 @@ public class QueryFragment extends Fragment {
     private String __queryMode = "";
 
     // 懒加载：分批渲染，首屏只渲染 BATCH_SIZE 条，滚动到底部再加载下一批
-    private static final int BATCH_SIZE = 15;
+    private static final int BATCH_SIZE = 30;
     private int renderedCount = 0;
     private boolean isLoadingMore = false;
     private Runnable currentScrollListener = null;
@@ -185,6 +193,18 @@ public class QueryFragment extends Fragment {
         switchShowDelivered = view.findViewById(R.id.switch_show_delivered);
         switchGridView = view.findViewById(R.id.switch_grid_view);
         tvResultCount = view.findViewById(R.id.tv_result_count);
+        tvResultTimeout = view.findViewById(R.id.tv_result_timeout);
+        resultCountFlow = view.findViewById(R.id.result_count_flow);
+        resultCountMarquee = view.findViewById(R.id.result_count_marquee);
+        if (resultCountFlow != null) {
+            // 初始/未查询时不点亮跑马灯（有超时件时才由 updateResultCount 点亮）
+            resultCountFlow.setFlowEnabled(false);
+        }
+        resultCountBox = view.findViewById(R.id.result_count_box);
+        if (resultCountBox != null) {
+            // 尚未查询时整个结果数框（前缀+超时出库文字+跑马灯）一起隐藏，查询完成后再显示
+            resultCountBox.setVisibility(View.INVISIBLE);
+        }
         resultsContainer = view.findViewById(R.id.results_container);
         historyPanel = view.findViewById(R.id.history_panel);
         // 网格行通过负 margin 向外贴边，行宽会超出本容器边界；
@@ -614,6 +634,7 @@ public class QueryFragment extends Fragment {
                 }
                 if (restored.size() > 0) {
                     currentPackages = restored;
+                    hasQueried = true;
                     mainHandler.post(() -> {
                         try {
                             renderList();
@@ -656,6 +677,10 @@ public class QueryFragment extends Fragment {
         switchShowDelivered = null;
         switchGridView = null;
         tvResultCount = null;
+        tvResultTimeout = null;
+        resultCountFlow = null;
+        resultCountMarquee = null;
+        resultCountBox = null;
         resultsContainer = null;
         historyPanel = null;
         progressBar = null;
@@ -702,8 +727,7 @@ public class QueryFragment extends Fragment {
         searchType = (type == null || type.isEmpty()) ? "phoneTail" : type;
         Log.d(TAG, "搜索类型切换: " + searchType);
         try { LogRecorder.info(requireContext(), "Query", "搜索类型切换", searchType); } catch (Exception ignore) {}
-        // 切换搜索类型后停止当前的自动刷新循环
-        stopAutoRefresh();
+        // 注意：切换类型不停止自动刷新循环，下一轮自动刷新会按新类型继续查询
         updateTypeButtons();
     }
 
@@ -910,21 +934,26 @@ public class QueryFragment extends Fragment {
         }
         // 记住本次实际查询条件：清空输入后自动刷新仍按此继续
         lastQueriedBillCode = billCode;
+        // 自动刷新固定使用"当前列表对应的查询类型"：手动切换类型后，自动刷新不按新类型查询
+        String effectiveType = isAuto ? lastQueriedType : searchType;
+        if (!isAuto) {
+            lastQueriedType = effectiveType;
+        }
         // 记录查询历史（输入框聚焦时展示"最近查询"）；自动刷新/语音识别不计入
         if (recordHistory && !isAuto) {
-            recordQueryHistory(billCode, searchType);
+            recordQueryHistory(billCode, effectiveType);
         }
 
         boolean sd = (switchShowDelivered != null) ? switchShowDelivered.isChecked() : showDelivered;
 
-        Log.d(TAG, "执行查询: billCode=" + billCode + " type=" + searchType + " showDelivered=" + sd + " isAuto=" + isAuto);
+        Log.d(TAG, "执行查询: billCode=" + billCode + " type=" + effectiveType + " showDelivered=" + sd + " isAuto=" + isAuto);
         try {
             LogRecorder.info(requireContext(), "Query", "执行查询",
-                    "billCode=" + billCode + " type=" + searchType + " showDelivered=" + sd + " isAuto=" + isAuto);
+                    "billCode=" + billCode + " type=" + effectiveType + " showDelivered=" + sd + " isAuto=" + isAuto);
         } catch (Exception ignore) {}
 
         if (syncToPc && serverConnectEnabled && syncQueryEnabled && syncClient != null) {
-            syncClient.sendQueryTrigger(billCode, searchType, sd);
+            syncClient.sendQueryTrigger(billCode, effectiveType, sd);
         }
 
         isAutoRefresh = isAuto;
@@ -937,7 +966,7 @@ public class QueryFragment extends Fragment {
         JSONObject body = new JSONObject();
         try {
             body.put("billCode", billCode);
-            body.put("type", searchType);
+            body.put("type", effectiveType);
             body.put("showDelivered", sd);
             if (isAuto) body.put("pendingOnly", true);
 
@@ -967,7 +996,7 @@ public class QueryFragment extends Fragment {
                 __queryMode = "DIRECT";
                 new Thread(() -> {
                     try {
-                        JSONObject response = directApiClient.queryPackages(billCode, searchType, isAuto);
+                        JSONObject response = directApiClient.queryPackages(billCode, effectiveType, isAuto);
                         __tRespArrived = System.currentTimeMillis();
                         if (!isViewReady) return;
                         mainHandler.post(() -> handleQueryResponse(response, sd, isAuto));
@@ -1037,6 +1066,8 @@ public class QueryFragment extends Fragment {
             rescheduleAutoRefreshOnErrorOrEmpty();
             return;
         }
+        // 查询成功过：结果数框（前缀+超时出库文字+跑马灯）随列表一同显示
+        hasQueried = true;
 
         // Extract packages array
         long _tParseStart = System.currentTimeMillis();
@@ -1363,6 +1394,45 @@ public class QueryFragment extends Fragment {
         }
     }
 
+    /** 按当前容器宽度计算单列卡片宽度（与 calculateGridSpanCount 同一算法） */
+    private int getGridColumnWidth(int spanCount) {
+        try {
+            Context ctx = getContext();
+            if (ctx == null || spanCount <= 0) return 0;
+            int gap = ctx.getResources().getDimensionPixelSize(R.dimen.grid_gap);
+            int availW;
+            if (resultsContainer != null && resultsContainer.getWidth() > 0) {
+                availW = resultsContainer.getWidth();
+            } else {
+                android.util.DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
+                int pagePadPx = ctx.getResources().getDimensionPixelSize(R.dimen.pad_page_h);
+                availW = dm.widthPixels - pagePadPx * 2;
+            }
+            return Math.max(0, (availW - gap * (spanCount - 1)) / spanCount);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * 生成网格卡片单元格参数：整行用均分权重；
+     * 最后一行不足整列数时按正常列宽固定宽度，避免单张卡片拉伸占满整行。
+     */
+    private LinearLayout.LayoutParams makeGridCellParams(int c, int rowSize, int spanCount, int heightMode) {
+        int perW = getGridColumnWidth(spanCount);
+        LinearLayout.LayoutParams lp;
+        if (rowSize >= spanCount || perW <= 0) {
+            lp = new LinearLayout.LayoutParams(0, heightMode, 1.0f);
+        } else {
+            lp = new LinearLayout.LayoutParams(perW, heightMode);
+        }
+        if (c > 0) {
+            int gap = getResources().getDimensionPixelSize(R.dimen.spacing_lg);
+            lp.leftMargin = gap;
+        }
+        return lp;
+    }
+
     /** 读取设置：是否手动固定竖向排列每行卡片数 */
     private boolean getGridManualColumnsEnabled() {
         try {
@@ -1581,9 +1651,8 @@ public class QueryFragment extends Fragment {
                                 card = (item != null) ? createPackageCardView(item, true, spanCount) : null;
                                 if (card == null) continue;
                             }
-                            LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(
-                                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-                            if (j > 0) cellLp.leftMargin = dp12;
+                            LinearLayout.LayoutParams cellLp = makeGridCellParams(
+                                    j, rowIds.size(), spanCount, ViewGroup.LayoutParams.WRAP_CONTENT);
                             card.setLayoutParams(cellLp);
                             targetRow.addView(card);
                         }
@@ -1698,9 +1767,8 @@ public class QueryFragment extends Fragment {
                         for (int c = 0; c < rowSize; c++) {
                             JSONObject item = currentPackages.get(idx + c);
                             CardView card = createPackageCardView(item, true, spanCount);
-                            LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(
-                                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-                            if (c > 0) cellLp.leftMargin = dp12;
+                            LinearLayout.LayoutParams cellLp = makeGridCellParams(
+                                    c, rowSize, spanCount, ViewGroup.LayoutParams.WRAP_CONTENT);
                             card.setLayoutParams(cellLp);
                             row.addView(card);
                         }
@@ -1935,13 +2003,14 @@ public class QueryFragment extends Fragment {
         try {
             String arrivalRaw = firstNonEmpty(
                     item.optString("rawImgPathArrival", ""),
-                    item.optString("fileImgPath", ""),
+                    item.optString("inSignImg", ""),
                     item.optString("imgName", ""));
             String outboundRaw = firstNonEmpty(
                     item.optString("rawImgPathOutbound", ""),
-                    item.optString("inSignImg", ""));
+                    item.optString("fileImgPath", ""),
+                    item.optString("outSignImg", ""));
 
-            // 服务器模式：服务器已返回 imageUrl（一般为入库照），出库照可能由独立字段给出
+            // 服务器模式：服务器已返回 imageUrl（一般为出库文件照），出库照可能由独立字段给出
             String serverOutbound = firstNonEmpty(
                     item.optString("outboundImageUrl", ""),
                     item.optString("signImageUrl", ""),
@@ -2066,8 +2135,8 @@ public class QueryFragment extends Fragment {
 
     private void loadMoreItems() {
         if (!isViewReady || resultsContainer == null || isLoadingMore) return;
-        // 快速滑动过程中（400ms内）不触发底部加载，等滚动稳定后再加载，避免与惯性滚动相互干扰
-        if (System.currentTimeMillis() - lastUserScrollAt < 400) return;
+        // 快速滑动连发保护：极短时间内不重复触发（120ms），既防与惯性滚动干扰，又不明显延迟加载
+        if (System.currentTimeMillis() - lastUserScrollAt < 120) return;
         // 防抖：距离上次加载不到 300ms 则跳过，避免快速滑动时过度触发
         long now = System.currentTimeMillis();
         if (now - lastLoadMoreAt < 300) return;
@@ -2105,9 +2174,8 @@ public class QueryFragment extends Fragment {
                     JSONObject item = currentPackages.get(idx + c);
                     CardView card = createPackageCardView(item, true, spanCount);
                     // 同行卡片高度统一：MATCH_PARENT 跟随行容器测量后的最高高度
-                    LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(
-                            0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
-                    if (c > 0) cellLp.leftMargin = dp12;
+                    LinearLayout.LayoutParams cellLp = makeGridCellParams(
+                            c, rowSize, spanCount, ViewGroup.LayoutParams.MATCH_PARENT);
                     card.setLayoutParams(cellLp);
                     row.addView(card);
                 }
@@ -2421,23 +2489,36 @@ public class QueryFragment extends Fragment {
             }
             int muted = getResources().getColor(R.color.muted, ctx.getTheme());
             int success = getResources().getColor(R.color.success, ctx.getTheme());
-            int warning = getResources().getColor(R.color.warning, ctx.getTheme());
 
+            // 前缀："xx 个包裹 · 待取 x（绿色数字） · "
             SpannableStringBuilder sb = new SpannableStringBuilder();
             sb.append(total + " 个包裹 · 待取 ");
             int n1 = sb.length();
             sb.append(String.valueOf(pending));
-            sb.append(" · 超时出库 ");
-            int n2 = sb.length();
-            sb.append(String.valueOf(timeout));
-            // 整段默认 muted 色，两个数字分别上绿色/黄色
+            sb.append(" · ");
             sb.setSpan(new ForegroundColorSpan(muted), 0, sb.length(),
                     SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
             sb.setSpan(new ForegroundColorSpan(success), n1, n1 + String.valueOf(pending).length(),
                     SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
-            sb.setSpan(new ForegroundColorSpan(warning), n2, n2 + String.valueOf(timeout).length(),
-                    SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
             tvResultCount.setText(sb);
+
+            // 超时出库文字（黄色）+ 跑马灯边框：有超时件时才显示"请核验"后缀并点亮跑马灯；
+            // 无超时件时仅保留"超时出库 0"文字，后缀与边框整体隐藏
+            if (tvResultTimeout != null) {
+                tvResultTimeout.setText(timeout > 0
+                        ? "超时出库 " + timeout + " (请核验是否已取走)"
+                        : "超时出库 0");
+            }
+            if (resultCountMarquee != null) {
+                resultCountMarquee.setVisibility(timeout > 0 ? View.VISIBLE : View.GONE);
+            }
+            if (resultCountFlow != null) {
+                resultCountFlow.setFlowEnabled(timeout > 0);
+            }
+            if (resultCountBox != null) {
+                // 与"前缀"一同隐藏/显示：未查询过时不显示整个结果数框
+                resultCountBox.setVisibility(hasQueried ? View.VISIBLE : View.INVISIBLE);
+            }
         } catch (Throwable ignore) {}
     }
 
@@ -2702,7 +2783,9 @@ public class QueryFragment extends Fragment {
         LinearLayout root = new LinearLayout(ctx);
         root.setOrientation(vertical ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         root.setGravity(vertical ? Gravity.NO_GRAVITY : Gravity.CENTER_VERTICAL);
-        root.setPadding(dp14, dp14, dp14, vertical ? dp10 : dp14);
+        // 卡片水平内边距 14dp→9.5dp（两侧合计省出 9dp），单号等内容可用宽度 +9dp
+        int padSide = (int) (res.getDisplayMetrics().density * 9.5f + 0.5f);
+        root.setPadding(padSide, dp14, padSide, vertical ? dp10 : dp14);
         card.addView(root);
 
         // ===== Image =====
@@ -2778,16 +2861,28 @@ public class QueryFragment extends Fragment {
             info.setLayoutParams(ilp);
         }
 
-        // 单号行标签与值的间距单独再缩 2dp（4dp→2dp），其余行保持 4dp
-        int gap2 = (int) (ctx.getResources().getDisplayMetrics().density * 2 + 0.5f);
+        // 单号行标签与值的间距设为 1.5dp（取消 40dp 最小宽度后按需求微调），其余行保持 4dp
+        int gap2 = (int) (ctx.getResources().getDisplayMetrics().density * 1.5f + 0.5f);
+        int dp5 = (int) (ctx.getResources().getDisplayMetrics().density * 5 + 0.5f);
         LinearLayout billRow = makeLabelValueRow(ctx, "单号", trackingNumber, ink2, champagne, ink, true, dp6, 14, 16, true);
         setLabelGap(billRow, gap2);
+        // 取消单号标签的 40dp 最小宽度，数字真正紧贴"单号"（这是之前间距没变小的主因）
+        setLabelMinWidth(billRow, 0);
+        // 单号后面预留 5dp，避免最后一位数字紧贴行尾导致显示不全
+        setValueRightPadding(billRow, dp5);
         info.addView(billRow);
         makeValueClickableToCopy(billRow, ctx, "单号", trackingNumber); // 点击单号直接复制
-        // 收件人(姓名+手机号)：网格窄卡下强制单行省略号，避免折行撑高卡片导致同行不齐
-        StringBuilder who = new StringBuilder(recipient);
-        if (mobile.length() > 0) who.append("  ").append(mobile);
-        addLabelValueRow(info, "收件人", who.toString(), ink2, ink, ink, false, dp6, 14, 16, true);
+        // 收件人(姓名+手机号)：网格窄卡下强制单行省略号，避免折行撑高卡片导致同行不齐；
+        // 收件人为空/未知时不显示姓名（有手机号则只显示手机号，都没有则整行隐藏）
+        StringBuilder who = new StringBuilder();
+        if (!isUnknownText(recipient)) who.append(recipient);
+        if (mobile.length() > 0) {
+            if (who.length() > 0) who.append("  ");
+            who.append(normalizeMaskedMobile(mobile));
+        }
+        if (who.length() > 0) {
+            addLabelValueRow(info, "收件人", who.toString(), ink2, ink, ink, false, dp6, 14, 16, true);
+        }
 
         // 无论 pickUpCode 是否为空都固定显示一行，保证 info 区行数一致
         LinearLayout pickRow = makeLabelValueRow(ctx, "取件码", pickupCode,
@@ -2880,13 +2975,14 @@ public class QueryFragment extends Fragment {
             startTimeoutBlink(card, trackingNumber);
         }
 
-        // 点击卡片（非图片/单号/取件码区域）弹出包裹轨迹详情
-        card.setOnClickListener(v -> {
+        // 长按卡片弹出包裹轨迹详情
+        card.setOnLongClickListener(v -> {
             try {
                 TrajectoryDialog.show(requireContext(), directApiClient,
                         apiService != null ? apiService.getOkHttpClient() : null,
                         trackingNumber, resolveExpressCompanyCode(item));
             } catch (Throwable ignore) {}
+            return true;
         });
 
         return card;
@@ -2979,7 +3075,9 @@ public class QueryFragment extends Fragment {
             LinearLayout root = new LinearLayout(ctx);
             root.setOrientation(vertical ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
             root.setGravity(vertical ? Gravity.NO_GRAVITY : Gravity.CENTER_VERTICAL);
-            root.setPadding(dp14, dp14, dp14, vertical ? dp10 : dp14);
+            // 卡片水平内边距 14dp→9.5dp（两侧合计省出 9dp），单号等内容可用宽度 +9dp
+            int padSide = (int) (res.getDisplayMetrics().density * 9.5f + 0.5f);
+            root.setPadding(padSide, dp14, padSide, vertical ? dp10 : dp14);
             card.addView(root);
 
             // ===== Image =====
@@ -3051,17 +3149,29 @@ public class QueryFragment extends Fragment {
             }
 
             // Bill code row
-            // 单号行标签与值的间距单独再缩 2dp（4dp→2dp），其余行保持 4dp
-            int gap2 = (int) (ctx.getResources().getDisplayMetrics().density * 2 + 0.5f);
+            // 单号行标签与值的间距设为 1.5dp（取消 40dp 最小宽度后按需求微调），其余行保持 4dp
+            int gap2 = (int) (ctx.getResources().getDisplayMetrics().density * 1.5f + 0.5f);
+            int dp5 = (int) (ctx.getResources().getDisplayMetrics().density * 5 + 0.5f);
             LinearLayout billRow = makeLabelValueRow(ctx, "单号", trackingNumber, ink2, champagne, ink, true, dp6, 14, 16, true);
             setLabelGap(billRow, gap2);
+            // 取消单号标签的 40dp 最小宽度，数字真正紧贴"单号"（这是之前间距没变小的主因）
+            setLabelMinWidth(billRow, 0);
+            // 单号后面预留 5dp，避免最后一位数字紧贴行尾导致显示不全
+            setValueRightPadding(billRow, dp5);
             info.addView(billRow);
             makeValueClickableToCopy(billRow, ctx, "单号", trackingNumber); // 点击单号直接复制
 
-            // Recipient row：网格下单行省略，避免折行导致同行卡片高度不齐
-            StringBuilder who = new StringBuilder(recipient);
-            if (mobile.length() > 0) who.append("  ").append(mobile);
-            addLabelValueRow(info, "收件人", who.toString(), ink2, ink, ink, false, dp6, 14, 16, true);
+            // Recipient row：网格下单行省略，避免折行导致同行卡片高度不齐；
+            // 收件人为空/未知时不显示姓名（有手机号则只显示手机号，都没有则整行隐藏）
+            StringBuilder who = new StringBuilder();
+            if (!isUnknownText(recipient)) who.append(recipient);
+            if (mobile.length() > 0) {
+                if (who.length() > 0) who.append("  ");
+                who.append(normalizeMaskedMobile(mobile));
+            }
+            if (who.length() > 0) {
+                addLabelValueRow(info, "收件人", who.toString(), ink2, ink, ink, false, dp6, 14, 16, true);
+            }
 
             // Pickup code row（vertical 模式强制固定一行，保证信息区高度一致）
             LinearLayout pickRow = makeLabelValueRow(ctx, "取件码", pickupCode,
@@ -3151,13 +3261,14 @@ public class QueryFragment extends Fragment {
                 startTimeoutBlink(card, trackingNumber);
             }
 
-            // 点击卡片（非图片/单号/取件码区域）弹出包裹轨迹详情
-            card.setOnClickListener(v -> {
+            // 长按卡片弹出包裹轨迹详情
+            card.setOnLongClickListener(v -> {
                 try {
                     TrajectoryDialog.show(requireContext(), directApiClient,
                             apiService != null ? apiService.getOkHttpClient() : null,
                             trackingNumber, resolveExpressCompanyCode(item));
                 } catch (Throwable ignore) {}
+                return true;
             });
 
             // Set tag for differential refresh
@@ -3172,6 +3283,25 @@ public class QueryFragment extends Fragment {
 
     // ===== Label/Value Row Helpers =====
 
+    /** 判断文本是否为空/未知（null、未知、无、占位符等），用于收件人等可缺失字段 */
+    private static boolean isUnknownText(String s) {
+        if (s == null) return true;
+        String t = s.trim();
+        if (t.isEmpty()) return true;
+        return "未知".equals(t) || "null".equalsIgnoreCase(t) || "无".equals(t)
+                || "-".equals(t) || "--".equals(t) || "—".equals(t) || "暂无".equals(t);
+    }
+
+    /** 手机号脱敏前缀压缩：前面多个*只显示4个*+后面数字（如 *******2729 → ****2729） */
+    private static String normalizeMaskedMobile(String m) {
+        if (m == null) return "";
+        String t = m.trim();
+        int i = 0;
+        while (i < t.length() && t.charAt(i) == '*') i++;
+        if (i > 0) return "****" + t.substring(i);
+        return t;
+    }
+
     /** 单独调整某行"标签-值"的间距（用于单号行更紧凑，不影响其他行） */
     private static void setLabelGap(LinearLayout row, int rightMarginPx) {
         if (row == null || row.getChildCount() == 0) return;
@@ -3180,6 +3310,24 @@ public class QueryFragment extends Fragment {
         if (lp instanceof LinearLayout.LayoutParams) {
             ((LinearLayout.LayoutParams) lp).rightMargin = rightMarginPx;
             label.setLayoutParams(lp);
+        }
+    }
+
+    /** 取消某行标签的最小宽度（默认 40dp 会让"单号"后面多出约 10dp 空隙） */
+    private static void setLabelMinWidth(LinearLayout row, int minWidthPx) {
+        if (row == null || row.getChildCount() == 0) return;
+        View label = row.getChildAt(0);
+        if (label instanceof TextView) {
+            ((TextView) label).setMinWidth(minWidthPx);
+        }
+    }
+
+    /** 给某行"值"文字右侧预留间距（单号等长文本防最后一位被截断） */
+    private static void setValueRightPadding(LinearLayout row, int paddingPx) {
+        if (row == null || row.getChildCount() < 2) return;
+        View v = row.getChildAt(1);
+        if (v instanceof TextView) {
+            v.setPadding(0, 0, paddingPx, 0);
         }
     }
 

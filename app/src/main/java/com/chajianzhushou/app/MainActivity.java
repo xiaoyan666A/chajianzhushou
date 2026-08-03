@@ -202,6 +202,12 @@ public class MainActivity extends AppCompatActivity {
         et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         et.setHint("请输入管理员密码");
         et.setTextSize(17f);
+        // 与 App 输入框风格统一：圆角背景 + 内边距
+        et.setBackgroundResource(R.drawable.bg_input);
+        try {
+            int pad = getResources().getDimensionPixelSize(R.dimen.spacing_lg);
+            et.setPadding(pad, pad, pad, pad);
+        } catch (Exception ignore) {}
         try {
             et.setTextColor(getResources().getColor(R.color.ink, getTheme()));
             et.setHintTextColor(getResources().getColor(R.color.muted, getTheme()));

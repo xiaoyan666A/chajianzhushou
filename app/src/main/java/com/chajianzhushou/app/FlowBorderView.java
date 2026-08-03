@@ -23,6 +23,7 @@ public class FlowBorderView extends View {
     private ValueAnimator animator;
     private float phase = 0f;
     private float radius = 0f;
+    private boolean flowEnabled = true;
 
     public FlowBorderView(Context context) {
         this(context, null);
@@ -75,7 +76,17 @@ public class FlowBorderView extends View {
         borderPath.reset();
         borderPath.addRoundRect(rectF, radius, radius, Path.Direction.CW);
         pathMeasure.setPath(borderPath, false);
-        startFlow();
+        if (flowEnabled) startFlow();
+    }
+
+    /** 开关：开启时启动流水动画，关闭时停止（默认开启，供结果数框按需点亮） */
+    public void setFlowEnabled(boolean enabled) {
+        flowEnabled = enabled;
+        if (enabled) {
+            startFlow();
+        } else {
+            stopFlow();
+        }
     }
 
     /** 启动流水动画（与卡片边框闪烁、标签闪烁互相独立，互不干扰） */
