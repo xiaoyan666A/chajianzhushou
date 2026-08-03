@@ -724,16 +724,24 @@ public class ImagePreviewDialog extends Dialog {
             return;
         }
         btnCompare.setVisibility(View.VISIBLE);
-        // 当前显示的是入库/原图 → 按钮"点击查看出库图片"；
-        // 当前显示的是出库图 → 按钮"返回查看入库图片"
-        btnCompare.setText(showingCompare
-                ? "返回查看" + primaryName(currentIndex)
-                : "点击查看" + compareName(currentIndex));
+        // 固定文案与切换状态一一对应，不再依赖数据推断的名称，避免"反了"
+        // 默认（显示卡片原图）→ "点击查看出库图片"；切换后（显示对比图）→ "返回查看入库图片"
+        btnCompare.setText(showingCompare ? "返回查看入库图片" : "点击查看出库图片");
     }
 
     /** 点击切换：原图 ↔ 对比照片（入库照/出库照） */
     private void toggleCompare() {
-        if (compareUrl(currentIndex).isEmpty()) return;
+        String cmp = compareUrl(currentIndex);
+        if (cmp.isEmpty()) return;
+        String primary = "";
+        try { primary = imageUrls.get(currentIndex); } catch (Throwable ignore) {}
+        // 记录切换日志：核对两张图分别是什么
+        try {
+            LogRecorder.info(getContext(), "IMAGE", "预览对比切换",
+                    "primary=" + primary + " compare=" + cmp
+                            + " name=" + compareName(currentIndex));
+        } catch (Exception ignore) {}
+        if (cmp.equals(primary)) return; // 两张图相同：不切换
         showingCompare = !showingCompare;
         loadCurrentImage();
     }

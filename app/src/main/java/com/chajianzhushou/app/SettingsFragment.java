@@ -59,6 +59,9 @@ public class SettingsFragment extends Fragment {
     private static final String KEY_TIMEOUT_MARK_DAYS = "timeout_mark_days";
     private static final String KEY_TIMEOUT_MARK_ENABLED = "timeout_mark_enabled";
     private static final String KEY_UI_FONT_SCALE = "ui_font_scale";
+    private static final String KEY_GRID_MANUAL_ENABLED = "grid_manual_columns_enabled";
+    private static final String KEY_GRID_MANUAL_COLUMNS_PORTRAIT = "grid_manual_columns_portrait";
+    private static final String KEY_GRID_MANUAL_COLUMNS_LANDSCAPE = "grid_manual_columns_landscape";
     // 字号重建防抖：3 秒内最多重建一次，杜绝任何意外触发的无限重建循环
     private static volatile long sLastFontRecreateAt = 0L;
     // 界面字号档位：小/中/大/特大（相对系统字号的倍率）
@@ -152,6 +155,11 @@ public class SettingsFragment extends Fragment {
     // Views - 界面显示（字号）
     private Spinner spinnerUiFontScale;
 
+    // Views - 界面显示（竖向排列每行卡片数）
+    private SwitchCompat switchGridManualColumns;
+    private Spinner spinnerGridManualColumnsPortrait;
+    private Spinner spinnerGridManualColumnsLandscape;
+
     // 定位权限申请使用 Activity Result API（替代已弃用的 requestPermissions/onRequestPermissionsResult）
     private final androidx.activity.result.ActivityResultLauncher<String[]> locationPermissionLauncher =
             registerForActivityResult(
@@ -177,6 +185,33 @@ public class SettingsFragment extends Fragment {
 
     // TTS helper
     private TtsHelper ttsHelper;
+
+    private void bindGridColumnsSpinner(Spinner spinner, final String prefKey, final String label) {
+        if (spinner == null) return;
+        java.util.List<String> colOptions = new java.util.ArrayList<>();
+        for (int i = 1; i <= 10; i++) colOptions.add(i + " 个");
+        ArrayAdapter<String> colAdapter = new ArrayAdapter<>(
+                requireContext(), R.layout.spinner_item, colOptions);
+        colAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
+        spinner.setAdapter(colAdapter);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
+                if (isLoadingSettings) return;
+                savePref(prefKey, pos + 1);
+                Log.d(TAG, label + ": " + (pos + 1));
+                try { LogRecorder.info(requireContext(), "Settings", label, String.valueOf(pos + 1)); } catch (Exception ignore) {}
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
+    private void restoreGridColumnsSpinner(Spinner spinner, int cols, boolean enabled) {
+        if (spinner == null) return;
+        if (cols < 1) cols = 1;
+        if (cols > 10) cols = 10;
+        spinner.setSelection(cols - 1);
+        spinner.setEnabled(enabled);
+    }
 
     @Nullable
     @Override
@@ -326,6 +361,27 @@ public class SettingsFragment extends Fragment {
                     });
                 }
                 @Override public void onNothingSelected(AdapterView<?> parent) {}
+            });
+        }
+
+        // 手动控制竖向排列每行卡片数（竖屏/横屏各 1~10），关闭开关时保持自适应
+        switchGridManualColumns = view.findViewById(R.id.switch_grid_manual_columns);
+        spinnerGridManualColumnsPortrait = view.findViewById(R.id.spinner_grid_manual_columns_portrait);
+        spinnerGridManualColumnsLandscape = view.findViewById(R.id.spinner_grid_manual_columns_landscape);
+        bindGridColumnsSpinner(spinnerGridManualColumnsPortrait, KEY_GRID_MANUAL_COLUMNS_PORTRAIT, "竖屏每行卡片数");
+        bindGridColumnsSpinner(spinnerGridManualColumnsLandscape, KEY_GRID_MANUAL_COLUMNS_LANDSCAPE, "横屏每行卡片数");
+        if (switchGridManualColumns != null) {
+            switchGridManualColumns.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isLoadingSettings) return;
+                savePref(KEY_GRID_MANUAL_ENABLED, isChecked);
+                if (spinnerGridManualColumnsPortrait != null) {
+                    spinnerGridManualColumnsPortrait.setEnabled(isChecked);
+                }
+                if (spinnerGridManualColumnsLandscape != null) {
+                    spinnerGridManualColumnsLandscape.setEnabled(isChecked);
+                }
+                Log.d(TAG, "手动每行卡片数开关: " + isChecked);
+                try { LogRecorder.info(requireContext(), "Settings", "手动每行卡片数开关", String.valueOf(isChecked)); } catch (Exception ignore) {}
             });
         }
 
@@ -641,6 +697,9 @@ public class SettingsFragment extends Fragment {
         spinnerTimeoutMarkDays = null;
         switchTimeoutMarkEnabled = null;
         spinnerUiFontScale = null;
+        switchGridManualColumns = null;
+        spinnerGridManualColumnsPortrait = null;
+        spinnerGridManualColumnsLandscape = null;
         apiService = null;
         mainHandler = null;
         ttsHelper = null;
@@ -963,6 +1022,16 @@ public class SettingsFragment extends Fragment {
                     if (diff < bestDiff) { bestDiff = diff; best = i; }
                 }
                 spinnerUiFontScale.setSelection(best);
+            }
+
+            // 手动控制竖向排列每行卡片数（竖屏/横屏各 1~10）
+            if (switchGridManualColumns != null) {
+                boolean manual = prefs.getBoolean(KEY_GRID_MANUAL_ENABLED, false);
+                switchGridManualColumns.setChecked(manual);
+                restoreGridColumnsSpinner(spinnerGridManualColumnsPortrait,
+                        prefs.getInt(KEY_GRID_MANUAL_COLUMNS_PORTRAIT, 3), manual);
+                restoreGridColumnsSpinner(spinnerGridManualColumnsLandscape,
+                        prefs.getInt(KEY_GRID_MANUAL_COLUMNS_LANDSCAPE, 4), manual);
             }
 
             // Mimo API Key

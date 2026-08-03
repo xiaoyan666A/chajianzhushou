@@ -181,18 +181,6 @@
                 android:text="查询" />
         </LinearLayout>
 
-        <!-- 查询历史：输入框聚焦时展开，点击某条自动回填输入框、选中对应类型并自动查询 -->
-        <LinearLayout
-            android:id="@+id/history_panel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_settings_card"
-            android:paddingHorizontal="@dimen/spacing_lg"
-            android:paddingVertical="@dimen/spacing_md"
-            android:visibility="gone"
-            android:layout_marginBottom="@dimen/pad_card_v" />
-
         <!-- 筛选条：结果数 + 竖向排列 + 显示已出库 同一行显示
              结果数框弹性收缩（单行省略尾部），保证两个开关在窄屏也始终可见 -->
         <LinearLayout
@@ -325,6 +313,18 @@
             android:layout_marginTop="40dp" />
     </LinearLayout>
 </ScrollView>
+
+    <!-- 查询历史悬浮层：覆盖在列表上方，不挤压下方控件（位置由代码定位到搜索框下方） -->
+    <LinearLayout
+        android:id="@+id/history_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:orientation="vertical"
+        android:background="@drawable/bg_history_overlay"
+        android:paddingHorizontal="@dimen/spacing_lg"
+        android:paddingVertical="@dimen/spacing_md"
+        android:visibility="gone" />
 
     <!-- 全屏Loading遮罩 -->
     <FrameLayout

@@ -55,6 +55,9 @@ public class QueryFragment extends Fragment {
     private static final String PREFS_HISTORY = "query_history";
     private static final int MAX_HISTORY = 20;
     private static final int HISTORY_PANEL_MAX_ROWS = 10;
+    private static final String KEY_GRID_MANUAL_ENABLED = "grid_manual_columns_enabled";
+    private static final String KEY_GRID_MANUAL_COLUMNS_PORTRAIT = "grid_manual_columns_portrait";
+    private static final String KEY_GRID_MANUAL_COLUMNS_LANDSCAPE = "grid_manual_columns_landscape";
 
     // Views
     private ScrollView scrollView;
@@ -457,6 +460,22 @@ public class QueryFragment extends Fragment {
     }
 
     @Override
+    public void onHiddenChanged(boolean hidden) {
+        super.onHiddenChanged(hidden);
+        // 从设置页切回查件页：重新按最新"手动每行卡片数"设置渲染网格
+        if (!hidden && isViewReady && isGridView
+                && currentPackages != null && currentPackages.size() > 0) {
+            mainHandler.post(() -> {
+                if (!isViewReady) return;
+                boolean wasAuto = isAutoRefresh;
+                isAutoRefresh = false;
+                renderList();
+                isAutoRefresh = wasAuto;
+            });
+        }
+    }
+
+    @Override
     public void onResume() {
         super.onResume();
         // Refresh voice button state and sync state (may have changed in settings)
@@ -710,6 +729,15 @@ public class QueryFragment extends Fragment {
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN");
             intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "说出单号、手机号或取件码");
+            // 先检查设备上是否有可处理语音识别的应用（未安装/停用识别服务时 resolveActivity 返回 null）
+            if (intent.resolveActivity(requireContext().getPackageManager()) == null) {
+                safeToast("当前设备未安装语音识别服务，无法使用语音查询");
+                try {
+                    LogRecorder.warn(requireContext(), "ASR", "语音识别不可用",
+                            "设备上无处理 RECOGNIZE_SPEECH 的应用，请安装/启用语音识别服务");
+                } catch (Exception ignore) {}
+                return;
+            }
             voiceLauncher.launch(intent);
         } catch (Exception e) {
             safeToast("语音识别不可用: " + e.getMessage());
@@ -1304,6 +1332,11 @@ public class QueryFragment extends Fragment {
             Context ctx = getContext();
             if (ctx == null) return 2;
             android.content.res.Resources res = ctx.getResources();
+            // 手动控制每行卡片数：开启后固定 1~10，不再按屏幕自适应
+            if (getGridManualColumnsEnabled()) {
+                int manual = getGridManualColumnsCount();
+                return Math.max(1, Math.min(10, manual));
+            }
             int baseMinW = res.getDimensionPixelSize(R.dimen.grid_card_min_width);
             int gap = res.getDimensionPixelSize(R.dimen.grid_gap);
             // 优先用列表容器的实际宽度（旋转后布局已更新），避免 DisplayMetrics 旧值导致列数不刷新
@@ -1327,6 +1360,32 @@ public class QueryFragment extends Fragment {
             return best;
         } catch (Exception e) {
             return 2;
+        }
+    }
+
+    /** 读取设置：是否手动固定竖向排列每行卡片数 */
+    private boolean getGridManualColumnsEnabled() {
+        try {
+            SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+            return prefs.getBoolean(KEY_GRID_MANUAL_ENABLED, false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 读取设置：手动固定的每行卡片数（竖屏/横屏各自设置，1~10） */
+    private int getGridManualColumnsCount() {
+        try {
+            SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+            boolean landscape = getResources().getConfiguration().orientation
+                    == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+            int v = prefs.getInt(landscape
+                    ? KEY_GRID_MANUAL_COLUMNS_LANDSCAPE
+                    : KEY_GRID_MANUAL_COLUMNS_PORTRAIT,
+                    landscape ? 4 : 3);
+            return Math.max(1, Math.min(10, v));
+        } catch (Exception e) {
+            return 3;
         }
     }
 
@@ -2375,6 +2434,25 @@ public class QueryFragment extends Fragment {
             historyPanel.setVisibility(View.GONE);
             return;
         }
+        // 悬浮定位：面板覆盖在搜索框正下方（不挤压下方控件），与搜索框左右对齐
+        try {
+            View root = getView();
+            if (root != null && etBillCode != null) {
+                int[] rootLoc = new int[2];
+                int[] boxLoc = new int[2];
+                root.getLocationOnScreen(rootLoc);
+                etBillCode.getLocationOnScreen(boxLoc);
+                int top = boxLoc[1] - rootLoc[1] + etBillCode.getHeight();
+                int pad = getResources().getDimensionPixelSize(R.dimen.pad_page_h);
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) historyPanel.getLayoutParams();
+                lp.gravity = Gravity.TOP;
+                lp.topMargin = top;
+                lp.leftMargin = pad;
+                lp.rightMargin = pad;
+                lp.width = FrameLayout.LayoutParams.MATCH_PARENT;
+                historyPanel.setLayoutParams(lp);
+            }
+        } catch (Throwable ignore) {}
         historyPanel.setVisibility(View.VISIBLE);
         Context ctx = getContext();
         if (ctx == null) return;

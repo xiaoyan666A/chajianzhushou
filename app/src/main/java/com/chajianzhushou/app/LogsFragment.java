@@ -1,6 +1,8 @@
 package com.chajianzhushou.app;
 
 import android.content.Context;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
@@ -529,7 +531,7 @@ public class LogsFragment extends Fragment {
                 card.addView(causeBox);
             }
 
-            // Detail (collapsed by default, show on click)
+            // Detail（默认收起；长按卡片展开/收起详情）
             if (item.detail != null && item.detail.length() > 0) {
                 TextView tvDetail = new TextView(ctx);
                 tvDetail.setText(item.detail);
@@ -543,7 +545,7 @@ public class LogsFragment extends Fragment {
                 tvDetail.setLayoutParams(detailParams);
                 card.addView(tvDetail);
 
-                card.setOnClickListener(v -> {
+                card.setOnLongClickListener(v -> {
                     if (tvDetail.getVisibility() == View.GONE) {
                         tvDetail.setVisibility(View.VISIBLE);
                         tvDetail.setMaxLines(Integer.MAX_VALUE);
@@ -551,12 +553,47 @@ public class LogsFragment extends Fragment {
                         tvDetail.setVisibility(View.GONE);
                         tvDetail.setMaxLines(2);
                     }
+                    return true;
                 });
             }
+
+            // 点击卡片：复制本条日志内容到剪贴板
+            card.setOnClickListener(v -> copyLogItem(item));
 
             logsListContainer.addView(card);
         } catch (Exception e) {
             // skip
+        }
+    }
+
+    /** 点击日志卡片：把本条日志完整内容复制到剪贴板 */
+    private void copyLogItem(LogItem item) {
+        if (item == null) return;
+        try {
+            StringBuilder sb = new StringBuilder();
+            if (item.logDate != null && item.logDate.length() > 0) sb.append("日期：").append(item.logDate).append('\n');
+            if (item.logTime != null && item.logTime.length() > 0) sb.append("时间：").append(item.logTime).append('\n');
+            if (item.module != null && item.module.length() > 0) sb.append("模块：").append(item.module).append('\n');
+            if (item.level != null && item.level.length() > 0) sb.append("级别：").append(item.level).append('\n');
+            if (item.title != null && item.title.length() > 0) sb.append("标题：").append(item.title).append('\n');
+            if (item.summary != null && item.summary.length() > 0) sb.append("内容：").append(item.summary).append('\n');
+            if (item.cause != null && item.cause.length() > 0) sb.append("原因：").append(item.cause).append('\n');
+            if (item.detail != null && item.detail.length() > 0) sb.append("详情：").append(item.detail);
+            String text = sb.toString().trim();
+            if (text.isEmpty()) return;
+
+            ClipboardManager cm = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(ClipData.newPlainText("查件助手日志", text));
+                safeToast("已复制日志（" + (item.module == null ? "" : item.module)
+                        + "：" + (item.title == null ? "" : item.title) + "）");
+                try {
+                    LogRecorder.info(requireContext(), "LOGS", "复制日志",
+                            (item.module == null ? "" : item.module) + " | " + (item.title == null ? "" : item.title));
+                } catch (Exception ignore) {}
+            }
+        } catch (Exception e) {
+            safeToast("复制失败: " + e.getMessage());
         }
     }
 

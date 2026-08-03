@@ -528,6 +528,131 @@
                     android:background="@drawable/bg_input"
                     android:paddingHorizontal="@dimen/card_margin_bottom" />
             </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <!-- 手动控制竖向排列每行卡片数 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="手动控制每行卡片数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启后固定每行显示数量，关闭则按屏幕宽度自适应"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_grid_manual_columns"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="竖屏时每行卡片数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启上方开关后生效"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_grid_manual_columns_portrait"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="84dp"
+                    android:enabled="false"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="横屏时每行卡片数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启上方开关后生效"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_grid_manual_columns_landscape"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="84dp"
+                    android:enabled="false"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ===== 界面风格卡片 ===== -->
