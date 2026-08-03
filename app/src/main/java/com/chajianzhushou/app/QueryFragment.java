@@ -1969,8 +1969,66 @@ public class QueryFragment extends Fragment {
                 if (arrivalRaw.length() > 0) { secondaryRaw = arrivalRaw; secondaryName = "入库图片"; }
                 else if (outboundRaw.length() > 0) { secondaryRaw = outboundRaw; secondaryName = "出库图片"; }
             }
-            resolveComparePhoto(trackingNumber, secondaryRaw, secondaryName);
+            if (secondaryRaw.isEmpty()) {
+                // 列表数据缺少另一张照片：按轨迹接口补齐（异步），保证预览可切换入库/出库图
+                fetchCompareFromTrajectory(trackingNumber, item, displayRaw);
+            } else {
+                resolveComparePhoto(trackingNumber, secondaryRaw, secondaryName);
+            }
         } catch (Throwable ignore) {}
+    }
+
+    /** 列表数据缺少对比照片时，调用轨迹接口（getStockBillLog）补齐入库/出库图 */
+    private void fetchCompareFromTrajectory(final String billCode, final JSONObject item, final String displayRaw) {
+        if (billCode == null || billCode.isEmpty() || directApiClient == null) return;
+        try {
+            final String company = resolveExpressCompanyCode(item);
+            new Thread(() -> {
+                try {
+                    JSONObject photos = directApiClient.getStockBillLog(billCode, company);
+                    if (photos == null) return;
+                    final String arrival = photos.optString("arrival", "");
+                    final String outbound = photos.optString("outbound", "");
+                    String display = displayRaw == null ? "" : displayRaw;
+                    String missing = "";
+                    String missingName = "";
+                    if (display.equals(arrival)) {
+                        missing = outbound;
+                        missingName = "出库图片";
+                    } else if (display.equals(outbound)) {
+                        missing = arrival;
+                        missingName = "入库图片";
+                    } else {
+                        // 无法判断当前显示哪张：优先补入库图，其次出库图
+                        missing = arrival.isEmpty() ? outbound : arrival;
+                        missingName = arrival.isEmpty() ? "出库图片" : "入库图片";
+                    }
+                    final String m = missing;
+                    final String mn = missingName;
+                    if (!isViewReady) return;
+                    mainHandler.post(() -> resolveComparePhoto(billCode, m, mn));
+                } catch (Throwable ignore) {}
+            }, "traj-compare").start();
+        } catch (Throwable ignore) {}
+    }
+
+    /** 根据包裹字段推断快递公司编码（中通/韵达/圆通/申通/顺丰/极兔等，缺省 ZTO） */
+    private static String resolveExpressCompanyCode(JSONObject item) {
+        if (item == null) return "ZTO";
+        String code = item.optString("expressCompanyCode", "");
+        if (code != null && !code.isEmpty()) return code;
+        String cn = firstNonEmpty(
+                item.optString("expressCompanyName", ""),
+                item.optString("expressCompany", ""),
+                item.optString("express", ""),
+                item.optString("courier", "")).toLowerCase();
+        if (cn.contains("中通") || cn.contains("zto") || cn.contains("zhongtong")) return "ZTO";
+        if (cn.contains("韵达") || cn.contains("yunda") || cn.contains("yd")) return "YUNDA";
+        if (cn.contains("圆通") || cn.contains("yto") || cn.contains("yuantong")) return "YTO";
+        if (cn.contains("申通") || cn.contains("sto") || cn.contains("shentong")) return "STO";
+        if (cn.contains("顺丰") || cn.contains("sf")) return "SF";
+        if (cn.contains("极兔") || cn.contains("jt") || cn.contains("jitu")) return "JT";
+        return "ZTO";
     }
 
     // ===== Lazy Load More =====
@@ -2822,6 +2880,15 @@ public class QueryFragment extends Fragment {
             startTimeoutBlink(card, trackingNumber);
         }
 
+        // 点击卡片（非图片/单号/取件码区域）弹出包裹轨迹详情
+        card.setOnClickListener(v -> {
+            try {
+                TrajectoryDialog.show(requireContext(), directApiClient,
+                        apiService != null ? apiService.getOkHttpClient() : null,
+                        trackingNumber, resolveExpressCompanyCode(item));
+            } catch (Throwable ignore) {}
+        });
+
         return card;
     }
 
@@ -3083,6 +3150,15 @@ public class QueryFragment extends Fragment {
             if (timeout) {
                 startTimeoutBlink(card, trackingNumber);
             }
+
+            // 点击卡片（非图片/单号/取件码区域）弹出包裹轨迹详情
+            card.setOnClickListener(v -> {
+                try {
+                    TrajectoryDialog.show(requireContext(), directApiClient,
+                            apiService != null ? apiService.getOkHttpClient() : null,
+                            trackingNumber, resolveExpressCompanyCode(item));
+                } catch (Throwable ignore) {}
+            });
 
             // Set tag for differential refresh
             card.setTag(R.id.btn_query, trackingNumber);

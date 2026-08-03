@@ -269,6 +269,76 @@ public class DirectApiClient {
         }
     }
 
+    /** 按单号查询包裹轨迹（tuxi.spm.read.detail.getStockBillLog，与兔喜官方app一致），返回 result 数组或 null */
+    private JSONArray queryStockBillLog(String billCode, String expressCompanyCode) throws Exception {
+        JSONObject auth = ensureLogin();
+        JSONObject data = new JSONObject();
+        data.put("uploadDate", System.currentTimeMillis());
+        data.put("billCode", billCode);
+        data.put("expressCompanyCode",
+                (expressCompanyCode == null || expressCompanyCode.isEmpty()) ? "ZTO" : expressCompanyCode);
+        String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
+
+        String token = auth.optString("accessToken", "");
+        String userId = auth.optString("userId", "");
+        String unionId = auth.optString("unionId", "unionB-wgxs_oGtI1bbTV4rRKB");
+        String deviceId = auth.optString("deviceId", "1750F6BE-5052-4FE6-9579-E8AF49522BA4");
+        String ysDt = auth.optString("ysDt", "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+");
+
+        Request request = new Request.Builder()
+                .url("https://kdcs-wx-lt.zt-express.com/gateway.do/")
+                .header("X-Zop-Name", "tuxi.spm.read.detail.getStockBillLog")
+                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.4")
+                .header("X-Ca-Version", "1")
+                .header("x-iam-token", token)
+                .header("token", token)
+                .header("X-Unionid", unionId)
+                .header("X-Device-Id", deviceId)
+                .header("X-Userid", userId)
+                .header("X-App-Version", "4.51.4")
+                .header("X-Ys-Dt", ysDt)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
+                .build();
+
+        try (Response resp = client.newCall(request).execute()) {
+            if (resp.body() == null) return null;
+            JSONObject body = new JSONObject(resp.body().string());
+            if (!body.optBoolean("status", false) || body.isNull("result")) return null;
+            return body.getJSONArray("result");
+        }
+    }
+
+    /**
+     * 轨迹里提取出入库照片（供预览对比）：{arrival, outbound} 原始S3路径，缺失为空串。
+     * 入库图取 stockLogTypeCode=12/10，出库图取 =50（签收出库）。
+     */
+    public JSONObject getStockBillLog(String billCode, String expressCompanyCode) throws Exception {
+        JSONObject out = new JSONObject();
+        out.put("arrival", "");
+        out.put("outbound", "");
+        JSONArray logs = queryStockBillLog(billCode, expressCompanyCode);
+        if (logs == null) return out;
+        for (int i = 0; i < logs.length(); i++) {
+            JSONObject item = logs.optJSONObject(i);
+            if (item == null) continue;
+            String type = item.optString("stockLogTypeCode", "");
+            String img = item.optString("image", "");
+            if (img == null || img.isEmpty()) continue;
+            if (out.optString("arrival").isEmpty() && ("12".equals(type) || "10".equals(type))) {
+                out.put("arrival", img);
+            } else if ("50".equals(type)) {
+                out.put("outbound", img);
+            }
+        }
+        return out;
+    }
+
+    /** 完整包裹轨迹（供轨迹详情弹窗展示）：返回 result 数组，可能为 null */
+    public JSONArray getStockBillLogEntries(String billCode, String expressCompanyCode) throws Exception {
+        return queryStockBillLog(billCode, expressCompanyCode);
+    }
+
     /**
      * 单号反查：用 billCode 直接调用 queryScanEnterInfoAppByCode 获取单条包裹的 fileImgPath。
      * 不与 queryPackages() 互相递归。
@@ -647,6 +717,7 @@ public class DirectApiClient {
             pkg.put("rawImgPath", rawImgPath);
             pkg.put("rawImgPathArrival", rawArrival);
             pkg.put("rawImgPathOutbound", rawOutbound);
+            pkg.put("expressCompanyCode", item.optString("expressCompanyCode", ""));
             packages.put(pkg);
         }
 
