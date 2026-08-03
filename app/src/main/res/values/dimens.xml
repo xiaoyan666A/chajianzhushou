@@ -10,14 +10,15 @@
     <dimen name="radius_4xl">22dp</dimen>
 
     <!-- ===== 文字大小 ===== -->
-    <dimen name="txt_xs">11sp</dimen>
-    <dimen name="txt_sm">13sp</dimen>
-    <dimen name="txt_base">15sp</dimen>
-    <dimen name="txt_md">17sp</dimen>
-    <dimen name="txt_lg">20sp</dimen>
-    <dimen name="txt_xl">24sp</dimen>
-    <dimen name="txt_2xl">28sp</dimen>
-    <dimen name="txt_3xl">36sp</dimen>
+    <!-- 全局字号统一增大（例外：结果数框16sp、"超时出库 x天"14sp、取件码绿色值20sp 保持不变） -->
+    <dimen name="txt_xs">13sp</dimen>
+    <dimen name="txt_sm">15sp</dimen>
+    <dimen name="txt_base">17sp</dimen>
+    <dimen name="txt_md">19sp</dimen>
+    <dimen name="txt_lg">22sp</dimen>
+    <dimen name="txt_xl">26sp</dimen>
+    <dimen name="txt_2xl">30sp</dimen>
+    <dimen name="txt_3xl">38sp</dimen>
 
     <!-- ===== 页面通用间距 ===== -->
     <dimen name="pad_page">24dp</dimen>
@@ -38,7 +39,7 @@
 
     <!-- ===== FAB 浮动按钮 ===== -->
     <dimen name="fab_size">56dp</dimen>
-    <dimen name="fab_text_size">22sp</dimen>
+    <dimen name="fab_text_size">24sp</dimen>
     <dimen name="fab_margin_end">8dp</dimen>
     <dimen name="fab_area_padding_end">12dp</dimen>
     <dimen name="fab_area_padding_bottom">12dp</dimen>
@@ -53,8 +54,8 @@
 
     <!-- ===== 超时卡片 ===== -->
     <dimen name="timeout_card_padding">14dp</dimen>
-    <dimen name="timeout_img_size">120dp</dimen>
-    <dimen name="timeout_label_width">60dp</dimen>
+    <dimen name="timeout_img_size">100dp</dimen>
+    <dimen name="timeout_label_width">52dp</dimen>
     <dimen name="timeout_btn_height">48dp</dimen>
 
     <!-- ===== 空状态 ===== -->
@@ -96,11 +97,13 @@
     <!-- ===== 状态标签 ===== -->
     <dimen name="chip_padding_h">8dp</dimen>
     <dimen name="chip_padding_v">4dp</dimen>
-    <dimen name="chip_text_size">12sp</dimen>
+    <dimen name="chip_text_size">14sp</dimen>
     <dimen name="chip_max_width">130dp</dimen>
 
     <!-- ===== 网格模式 ===== -->
-    <dimen name="grid_card_min_width">160dp</dimen>
+    <!-- 每行卡片数按屏幕可用宽度自适应（上限8）。
+         最小卡宽 180dp：常见平板竖屏约3列、横屏约4列，卡片宽度足以完整显示内容 -->
+    <dimen name="grid_card_min_width">180dp</dimen>
     <dimen name="grid_gap">10dp</dimen>
     <dimen name="grid_img_height">180dp</dimen>
     <dimen name="grid_label_min_width">40dp</dimen>

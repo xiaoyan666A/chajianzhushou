@@ -215,6 +215,7 @@ public class ThemeManager {
      * 有缓存定位时优先用缓存；否则请求粗/精定位更新。需先在 Manifest 声明定位权限。
      */
     @SuppressLint("MissingPermission")
+    @SuppressWarnings("deprecation") // minSdk 24：API 30+ 的新定位接口不适用，低版本仍需 requestSingleUpdate
     public static void requestSingleLocation(Context ctx, final LocationCallback callback) {
         if (callback == null) return;
         try {
@@ -261,7 +262,8 @@ public class ThemeManager {
                     cacheLocation(ctx, location.getLatitude(), location.getLongitude());
                     callback.onSuccess(location.getLatitude(), location.getLongitude());
                 }
-                @Override public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
+                @Override @Deprecated
+                public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
                 @Override public void onProviderEnabled(String provider) {}
                 @Override public void onProviderDisabled(String provider) {}
             };

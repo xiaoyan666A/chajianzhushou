@@ -429,8 +429,8 @@ public class LogsFragment extends Fragment {
             // Time
             TextView tvTime = new TextView(ctx);
             tvTime.setText(item.logTime != null ? item.logTime : "");
-            tvTime.setTextColor(ctx.getResources().getColor(R.color.muted));
-            tvTime.setTextSize(12);
+            tvTime.setTextColor(ctx.getResources().getColor(R.color.muted, ctx.getTheme()));
+            tvTime.setTextSize(14);
             LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             timeParams.rightMargin = dp(8);
@@ -442,7 +442,7 @@ public class LogsFragment extends Fragment {
                 TextView tvModule = new TextView(ctx);
                 tvModule.setText(item.module);
                 tvModule.setTextColor(0xFFFFFFFF);
-                tvModule.setTextSize(10);
+                tvModule.setTextSize(12);
                 tvModule.setBackgroundResource(R.drawable.bg_header_countdown);
                 tvModule.setPadding(dp(6), dp(2), dp(6), dp(2));
                 LinearLayout.LayoutParams modParams = new LinearLayout.LayoutParams(
@@ -455,12 +455,17 @@ public class LogsFragment extends Fragment {
             // Level tag
             TextView tvLevel = new TextView(ctx);
             tvLevel.setText(item.level != null ? item.level.toUpperCase() : "INFO");
-            tvLevel.setTextSize(10);
+            tvLevel.setTextSize(12);
             tvLevel.setPadding(dp(6), dp(2), dp(6), dp(2));
             int bgColor = getLevelBgColor(item.level);
             int fgColor = getLevelTextColor(item.level);
             tvLevel.setTextColor(fgColor);
-            // Simple background via a state drawable isn't easy dynamically, skip for now
+            // 级别标签圆角背景：与模块徽标一致，浅色/深色主题下均清晰可辨
+            android.graphics.drawable.GradientDrawable levelBg = new android.graphics.drawable.GradientDrawable();
+            levelBg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+            levelBg.setCornerRadius(dp(6));
+            levelBg.setColor(bgColor);
+            tvLevel.setBackground(levelBg);
 
             topRow.addView(tvLevel);
 
@@ -470,8 +475,8 @@ public class LogsFragment extends Fragment {
             if (item.title != null && item.title.length() > 0) {
                 TextView tvTitle = new TextView(ctx);
                 tvTitle.setText(item.title);
-                tvTitle.setTextColor(ctx.getResources().getColor(R.color.ink));
-                tvTitle.setTextSize(14);
+                tvTitle.setTextColor(ctx.getResources().getColor(R.color.ink, ctx.getTheme()));
+                tvTitle.setTextSize(16);
                 tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
                 LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -484,8 +489,8 @@ public class LogsFragment extends Fragment {
             if (item.summary != null && item.summary.length() > 0) {
                 TextView tvSummary = new TextView(ctx);
                 tvSummary.setText(item.summary);
-                tvSummary.setTextColor(ctx.getResources().getColor(R.color.muted));
-                tvSummary.setTextSize(12);
+                tvSummary.setTextColor(ctx.getResources().getColor(R.color.muted, ctx.getTheme()));
+                tvSummary.setTextSize(14);
                 tvSummary.setMaxLines(3);
                 LinearLayout.LayoutParams sumParams = new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -507,14 +512,14 @@ public class LogsFragment extends Fragment {
 
                 TextView tvCauseLabel = new TextView(ctx);
                 tvCauseLabel.setText("原因");
-                tvCauseLabel.setTextColor(ctx.getResources().getColor(R.color.muted));
-                tvCauseLabel.setTextSize(11);
+                tvCauseLabel.setTextColor(ctx.getResources().getColor(R.color.muted, ctx.getTheme()));
+                tvCauseLabel.setTextSize(13);
                 causeBox.addView(tvCauseLabel);
 
                 TextView tvCause = new TextView(ctx);
                 tvCause.setText(item.cause);
-                tvCause.setTextColor(ctx.getResources().getColor(R.color.warning));
-                tvCause.setTextSize(12);
+                tvCause.setTextColor(ctx.getResources().getColor(R.color.warning, ctx.getTheme()));
+                tvCause.setTextSize(14);
                 LinearLayout.LayoutParams causeTextParams = new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
                 causeTextParams.topMargin = dp(4);
@@ -528,8 +533,8 @@ public class LogsFragment extends Fragment {
             if (item.detail != null && item.detail.length() > 0) {
                 TextView tvDetail = new TextView(ctx);
                 tvDetail.setText(item.detail);
-                tvDetail.setTextColor(ctx.getResources().getColor(R.color.ink2));
-                tvDetail.setTextSize(11);
+                tvDetail.setTextColor(ctx.getResources().getColor(R.color.ink2, ctx.getTheme()));
+                tvDetail.setTextSize(13);
                 tvDetail.setMaxLines(2);
                 tvDetail.setVisibility(View.GONE);
                 LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(

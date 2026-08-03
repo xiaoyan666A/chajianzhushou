@@ -56,7 +56,14 @@ public class SettingsFragment extends Fragment {
     private static final String KEY_TTS_SPEED = "tts_speed";
     private static final String KEY_TTS_ENABLED = "tts_enabled";
     private static final String KEY_LOGS_ENABLED = "logs_enabled";
-    private static final int REQ_LOCATION_PERMISSION = 5201;
+    private static final String KEY_TIMEOUT_MARK_DAYS = "timeout_mark_days";
+    private static final String KEY_TIMEOUT_MARK_ENABLED = "timeout_mark_enabled";
+    private static final String KEY_UI_FONT_SCALE = "ui_font_scale";
+    // 字号重建防抖：3 秒内最多重建一次，杜绝任何意外触发的无限重建循环
+    private static volatile long sLastFontRecreateAt = 0L;
+    // 界面字号档位：小/中/大/特大（相对系统字号的倍率）
+    private static final float[] UI_FONT_SCALE_VALUES = {0.9f, 1.0f, 1.15f, 1.3f};
+    private static final String[] UI_FONT_SCALE_LABELS = {"小", "中", "大", "特大"};
 
     // auto_close_minutes: positions 0-8 → values in minutes
     private static final double[] AUTO_CLOSE_VALUES = {
@@ -83,6 +90,7 @@ public class SettingsFragment extends Fragment {
     private TextView tvAccountName;
     private TextView tvAccountId;
     private LinearLayout tvAccountStatus;
+    private TextView tvAppVersion;
 
     // Views - Voice Recognition
     private SwitchCompat switchAsrEnabled;
@@ -137,6 +145,33 @@ public class SettingsFragment extends Fragment {
     private EditText etAdminConfirmPwd;
     private Button btnSaveAdminPwd;
 
+    // Views - 超时件标注
+    private Spinner spinnerTimeoutMarkDays;
+    private SwitchCompat switchTimeoutMarkEnabled;
+
+    // Views - 界面显示（字号）
+    private Spinner spinnerUiFontScale;
+
+    // 定位权限申请使用 Activity Result API（替代已弃用的 requestPermissions/onRequestPermissionsResult）
+    private final androidx.activity.result.ActivityResultLauncher<String[]> locationPermissionLauncher =
+            registerForActivityResult(
+                    new androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+                    result -> {
+                        if (!isViewReady) return;
+                        boolean granted = false;
+                        if (result != null) {
+                            Boolean fine = result.get(android.Manifest.permission.ACCESS_FINE_LOCATION);
+                            Boolean coarse = result.get(android.Manifest.permission.ACCESS_COARSE_LOCATION);
+                            granted = (fine != null && fine) || (coarse != null && coarse);
+                        }
+                        if (granted) {
+                            doLocateForSunTimes();
+                        } else {
+                            updateThemeHint();
+                            safeToast("未授权定位权限，自动模式将使用手动设置的日出日落时间");
+                        }
+                    });
+
     // Prevent spinner from firing API during initial load
     private volatile boolean isLoadingSettings = true;
 
@@ -153,6 +188,15 @@ public class SettingsFragment extends Fragment {
         tvAccountName = view.findViewById(R.id.tv_account_name);
         tvAccountId = view.findViewById(R.id.tv_account_id);
         tvAccountStatus = view.findViewById(R.id.tv_account_status);
+        tvAppVersion = view.findViewById(R.id.tv_app_version);
+        // 应用版本：动态读取真实 versionName，避免与 build.gradle 中版本号不同步
+        try {
+            String ver = requireContext().getPackageManager()
+                    .getPackageInfo(requireContext().getPackageName(), 0).versionName;
+            if (tvAppVersion != null && ver != null && ver.length() > 0) {
+                tvAppVersion.setText(ver);
+            }
+        } catch (Exception ignore) {}
 
         // Voice recognition
         switchAsrEnabled = view.findViewById(R.id.switch_asr_enabled);
@@ -209,6 +253,81 @@ public class SettingsFragment extends Fragment {
         etAdminConfirmPwd = view.findViewById(R.id.et_admin_confirm_pwd);
         btnSaveAdminPwd = view.findViewById(R.id.btn_save_admin_pwd);
         if (btnSaveAdminPwd != null) btnSaveAdminPwd.setOnClickListener(v -> saveAdminPwd());
+
+        // 显示超时件标注总开关
+        switchTimeoutMarkEnabled = view.findViewById(R.id.switch_timeout_mark_enabled);
+        if (switchTimeoutMarkEnabled != null) {
+            switchTimeoutMarkEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isLoadingSettings) return;
+                savePref(KEY_TIMEOUT_MARK_ENABLED, isChecked);
+                postSettings("timeoutMarkEnabled", isChecked);
+                Log.d(TAG, "显示超时件标注: " + isChecked);
+                try { LogRecorder.info(requireContext(), "Settings", "显示超时件标注", String.valueOf(isChecked)); } catch (Exception ignore) {}
+            });
+        }
+
+        // 超时件标注：最近 N 天（1~20，默认 3）
+        spinnerTimeoutMarkDays = view.findViewById(R.id.spinner_timeout_mark_days);
+        if (spinnerTimeoutMarkDays != null) {
+            java.util.List<String> timeoutDayOptions = new java.util.ArrayList<>();
+            for (int i = 1; i <= 20; i++) timeoutDayOptions.add(i + " 天");
+            ArrayAdapter<String> timeoutDayAdapter = new ArrayAdapter<>(
+                    requireContext(), R.layout.spinner_item, timeoutDayOptions);
+            timeoutDayAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
+            spinnerTimeoutMarkDays.setAdapter(timeoutDayAdapter);
+            spinnerTimeoutMarkDays.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
+                    if (isLoadingSettings) return;
+                    int days = pos + 1;
+                    savePref(KEY_TIMEOUT_MARK_DAYS, days);
+                    postSettings("timeoutMarkDays", days);
+                    Log.d(TAG, "超时件标注天数: " + days);
+                    try { LogRecorder.info(requireContext(), "Settings", "超时件标注天数", String.valueOf(days)); } catch (Exception ignore) {}
+                }
+                @Override public void onNothingSelected(AdapterView<?> parent) {}
+            });
+        }
+
+        // 界面字号：小/中/大/特大，选择后立即重建界面生效
+        spinnerUiFontScale = view.findViewById(R.id.spinner_ui_font_scale);
+        if (spinnerUiFontScale != null) {
+            ArrayAdapter<String> fontAdapter = new ArrayAdapter<>(
+                    requireContext(), R.layout.spinner_item, UI_FONT_SCALE_LABELS);
+            fontAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
+            spinnerUiFontScale.setAdapter(fontAdapter);
+            // 只有用户真正点击选择时才生效；初始化/回填触发的 onItemSelected 一律忽略，
+            // 否则 Spinner 首次布局会自动触发一次选择 → 误执行 recreate() → 无限重建导致卡死闪退
+            final boolean[] fontUserTouched = {false};
+            spinnerUiFontScale.setOnTouchListener((v, event) -> {
+                fontUserTouched[0] = true;
+                return false; // 不消费事件，交给 Spinner 正常处理
+            });
+            spinnerUiFontScale.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
+                    float scale = UI_FONT_SCALE_VALUES[Math.min(pos, UI_FONT_SCALE_VALUES.length - 1)];
+                    // 三重防线：初始化/回填期间忽略；非用户触摸忽略；
+                    // 选择的值与当前实际字号相同也忽略（杜绝任何情况下触发无限重建循环）
+                    if (isLoadingSettings || !fontUserTouched[0]
+                            || Math.abs(scale - MainActivity.sFontScale) < 0.001f) return;
+                    savePref(KEY_UI_FONT_SCALE, scale);
+                    MainActivity.sFontScale = scale;
+                    Log.d(TAG, "界面字号: " + UI_FONT_SCALE_LABELS[pos] + " (" + scale + ")");
+                    try { LogRecorder.info(requireContext(), "Settings", "界面字号", UI_FONT_SCALE_LABELS[pos]); } catch (Exception ignore) {}
+                    // 延迟到选择回调之后重建 Activity，避免在 Spinner 事件派发中销毁界面
+                    view.post(() -> {
+                        try {
+                            if (getActivity() instanceof MainActivity) {
+                                long now = System.currentTimeMillis();
+                                if (now - sLastFontRecreateAt < 3000) return;
+                                sLastFontRecreateAt = now;
+                                getActivity().recreate();
+                            }
+                        } catch (Throwable ignore) {}
+                    });
+                }
+                @Override public void onNothingSelected(AdapterView<?> parent) {}
+            });
+        }
 
         apiService = new ApiService(requireContext());
         mainHandler = new Handler(Looper.getMainLooper());
@@ -480,6 +599,7 @@ public class SettingsFragment extends Fragment {
         tvAccountName = null;
         tvAccountId = null;
         tvAccountStatus = null;
+        tvAppVersion = null;
         switchAsrEnabled = null;
         spinnerAutoCloseMinutes = null;
         spinnerAutoRefresh = null;
@@ -518,6 +638,9 @@ public class SettingsFragment extends Fragment {
         etAdminNewPwd = null;
         etAdminConfirmPwd = null;
         btnSaveAdminPwd = null;
+        spinnerTimeoutMarkDays = null;
+        switchTimeoutMarkEnabled = null;
+        spinnerUiFontScale = null;
         apiService = null;
         mainHandler = null;
         ttsHelper = null;
@@ -543,7 +666,7 @@ public class SettingsFragment extends Fragment {
 
             TextView chip = new TextView(ctx);
             chip.setText("● " + moduleName);
-            chip.setTextSize(11);
+            chip.setTextSize(13);
             chip.setPadding(dp8 * 2, dp6, dp8 * 2, dp6);
 
             int color = android.graphics.Color.parseColor(colorStr);
@@ -657,30 +780,13 @@ public class SettingsFragment extends Fragment {
         if (android.os.Build.VERSION.SDK_INT >= 23
                 && requireContext().checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED
                 && requireContext().checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{
+            locationPermissionLauncher.launch(new String[]{
                     android.Manifest.permission.ACCESS_FINE_LOCATION,
                     android.Manifest.permission.ACCESS_COARSE_LOCATION
-            }, REQ_LOCATION_PERMISSION);
+            });
             return;
         }
         doLocateForSunTimes();
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_LOCATION_PERMISSION) {
-            boolean granted = grantResults.length > 0;
-            for (int r : grantResults) {
-                if (r != android.content.pm.PackageManager.PERMISSION_GRANTED) { granted = false; break; }
-            }
-            if (granted) {
-                doLocateForSunTimes();
-            } else {
-                updateThemeHint();
-                safeToast("未授权定位权限，自动模式将使用手动设置的日出日落时间");
-            }
-        }
     }
 
     private void doLocateForSunTimes() {
@@ -787,6 +893,13 @@ public class SettingsFragment extends Fragment {
         } catch (Exception ignore) {}
     }
 
+    private void savePref(String key, float value) {
+        try {
+            SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().putFloat(key, value).commit();
+        } catch (Exception ignore) {}
+    }
+
     private void loadLocalPrefs() {
         try {
             SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -827,6 +940,30 @@ public class SettingsFragment extends Fragment {
             // Auto refresh interval
             int refreshSec = prefs.getInt(KEY_AUTO_REFRESH, 0);
             applyAutoRefreshInterval(refreshSec);
+
+            // 超时件标注天数（1~20，默认3）
+            if (spinnerTimeoutMarkDays != null) {
+                int days = prefs.getInt(KEY_TIMEOUT_MARK_DAYS, 3);
+                if (days < 1) days = 1;
+                if (days > 20) days = 20;
+                spinnerTimeoutMarkDays.setSelection(days - 1);
+            }
+            // 显示超时件标注总开关（默认开启）
+            if (switchTimeoutMarkEnabled != null) {
+                switchTimeoutMarkEnabled.setChecked(prefs.getBoolean(KEY_TIMEOUT_MARK_ENABLED, true));
+            }
+
+            // 界面字号（小/中/大/特大）
+            if (spinnerUiFontScale != null) {
+                float scale = prefs.getFloat(KEY_UI_FONT_SCALE, 1f);
+                int best = 1;
+                float bestDiff = Float.MAX_VALUE;
+                for (int i = 0; i < UI_FONT_SCALE_VALUES.length; i++) {
+                    float diff = Math.abs(UI_FONT_SCALE_VALUES[i] - scale);
+                    if (diff < bestDiff) { bestDiff = diff; best = i; }
+                }
+                spinnerUiFontScale.setSelection(best);
+            }
 
             // Mimo API Key
             if (etMimoApiKey != null) etMimoApiKey.setText(prefs.getString("mimo_api_key", ""));
@@ -1155,6 +1292,12 @@ public class SettingsFragment extends Fragment {
             if (data.has("autoRefreshInterval")) {
                 applyAutoRefreshInterval(data.optInt("autoRefreshInterval", 5));
             }
+            if (data.has("timeoutMarkDays")) {
+                applyTimeoutMarkDays(data.optInt("timeoutMarkDays", 3));
+            }
+            if (data.has("timeoutMarkEnabled") && switchTimeoutMarkEnabled != null) {
+                switchTimeoutMarkEnabled.setChecked(data.optBoolean("timeoutMarkEnabled", true));
+            }
             // 界面风格（服务器 → 本地，电脑端/其他手机端改过后同步生效）
             if (data.has("themeMode")) {
                 String m = data.optString("themeMode", "");
@@ -1201,6 +1344,13 @@ public class SettingsFragment extends Fragment {
             if (diff < bestDiff) { bestDiff = diff; bestPos = i; }
         }
         spinnerAutoRefresh.setSelection(bestPos);
+    }
+
+    private void applyTimeoutMarkDays(int days) {
+        if (spinnerTimeoutMarkDays == null) return;
+        if (days < 1) days = 1;
+        if (days > 20) days = 20;
+        spinnerTimeoutMarkDays.setSelection(days - 1);
     }
 
     // ===== Server IP =====

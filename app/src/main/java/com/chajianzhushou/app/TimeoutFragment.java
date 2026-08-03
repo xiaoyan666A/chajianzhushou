@@ -977,6 +977,16 @@ public class TimeoutFragment extends Fragment {
                     String finalUrl = apiService.resolveImageUrl(img);
                     ImageLoader.with(apiService.getOkHttpClient()).load(finalUrl, billCode, iv, R.drawable.bg_image_placeholder);
                 } catch (Throwable ignore) {}
+            } else {
+                // 直连模式：queryPackages 不再预解析图片 URL，这里按原始路径按需异步解析后再加载
+                String rawPath = firstNonEmpty(
+                        pkg.optString("rawImgPath", ""),
+                        pkg.optString("fileImgPath", ""),
+                        pkg.optString("inSignImg", ""),
+                        pkg.optString("imgName", ""));
+                if (rawPath.length() > 0 && directApiClient != null) {
+                    resolveAndLoadTimeout(iv, billCode, rawPath, previewUrlRef);
+                }
             }
         }
         if (tvRecipient != null && billCode.equals(tvRecipient.getTag(R.id.image_loader_tag))) {
@@ -996,6 +1006,40 @@ public class TimeoutFragment extends Fragment {
             String toShow = courierName.length() > 0 ? courierName : currentCourierDisplay;
             tvCourier.setText(toShow.length() > 0 ? toShow : "—");
         }
+    }
+
+    /** 直连模式：按原始图片路径异步解析 URL 并加载（按需触发，不一次性请求全部 URL）。 */
+    private void resolveAndLoadTimeout(final ImageView iv, final String billCode, final String rawImgPath,
+                                       final java.util.concurrent.atomic.AtomicReference<String> previewUrlRef) {
+        if (iv == null || billCode == null || billCode.isEmpty() || rawImgPath == null || rawImgPath.isEmpty()) return;
+        final String marker = "raw:" + billCode + ":" + rawImgPath;
+        iv.setTag(R.id.image_loader_tag, marker);
+        try {
+            directApiClient.resolveImageUrl(billCode, rawImgPath, new DirectApiClient.ImageUrlCallback() {
+                @Override
+                public void onUrl(final String url) {
+                    if (!isViewReady) return;
+                    try {
+                        requireActivity().runOnUiThread(() -> {
+                            try {
+                                if (url == null || url.isEmpty()) return;
+                                if (iv.getTag(R.id.image_loader_tag) == null) return;
+                                if (!marker.equals(iv.getTag(R.id.image_loader_tag))) return; // 卡片已复用/重建，丢弃迟到结果
+                                if (apiService != null) {
+                                    ImageLoader.with(apiService.getOkHttpClient()).load(url, billCode, iv, R.drawable.bg_image_placeholder);
+                                }
+                                if (previewUrlRef != null) previewUrlRef.set(url);
+                            } catch (Throwable ignore) {}
+                        });
+                    } catch (Throwable ignore) {}
+                }
+
+                @Override
+                public void onError(String error) {
+                    Log.w(TAG, "图片URL解析失败 billCode=" + billCode + " err=" + error);
+                }
+            });
+        } catch (Throwable ignore) {}
     }
 
     /** enrich 查询失败时的兜底：若当前无任何展示值，显示 "—"（不覆盖已有合法展示） */

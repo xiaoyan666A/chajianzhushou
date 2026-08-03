@@ -1,35 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 超时卡片item —— 严格对齐电脑端 .timeout-card
-     横向布局：图片 | 左信息列(单号/收件人/入库时间) | 右【立即出库】按钮
+<!-- 超时卡片item —— 自适应布局（窄屏不挤压信息列）
+     第1行：图片 | 信息列(单号/收件人/入库时间/快递)；第2行：【立即出库】按钮整行
      背景: bg_timeout_card (14dp圆角, warning_12描边) -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/timeout_card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
+    android:orientation="vertical"
     android:background="@drawable/bg_timeout_card"
-    android:padding="18dp"
+    android:padding="@dimen/timeout_card_padding"
     android:layout_marginBottom="@dimen/card_margin_bottom">
 
-    <!-- 包裹图片（clipToOutline 让图片内容按圆角背景裁切） -->
-    <ImageView
-        android:id="@+id/iv_package_image"
-        android:layout_width="@dimen/timeout_img_size"
-        android:layout_height="@dimen/timeout_img_size"
-        android:scaleType="centerCrop"
-        android:background="@drawable/bg_pkg_image"
-        android:clipToOutline="true"
-        android:layout_marginEnd="@dimen/spacing_xl" />
-
-    <!-- 左信息列：.timeout-card-info -->
+    <!-- 第1行：图片 + 信息列 -->
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:layout_marginEnd="@dimen/card_margin_bottom">
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- 包裹图片（clipToOutline 让图片内容按圆角背景裁切） -->
+        <ImageView
+            android:id="@+id/iv_package_image"
+            android:layout_width="@dimen/timeout_img_size"
+            android:layout_height="@dimen/timeout_img_size"
+            android:scaleType="centerCrop"
+            android:background="@drawable/bg_pkg_image"
+            android:clipToOutline="true"
+            android:layout_marginEnd="@dimen/spacing_lg" />
+
+        <!-- 信息列：.timeout-card-info -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginEnd="@dimen/spacing_sm">
 
         <!-- 运单号（香槟色等宽字体） -->
         <LinearLayout
@@ -138,13 +144,14 @@
                 android:ellipsize="end"
                 tools:text="中通快递" />
         </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
 
-    <!-- 右：立即出库按钮 .timeout-outbound-btn (橙色警告风格) -->
+    <!-- 第2行：立即出库按钮 .timeout-outbound-btn (橙色警告风格，整行宽度) -->
     <Button
         android:id="@+id/btn_outbound"
         style="?android:attr/borderlessButtonStyle"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="@dimen/btn_height_lg"
         android:minWidth="0dp"
         android:background="@drawable/bg_btn_warning"
@@ -152,5 +159,6 @@
         android:textSize="@dimen/txt_base"
         android:textStyle="bold"
         android:text="立即出库"
-        android:paddingHorizontal="18dp" />
+        android:paddingHorizontal="@dimen/spacing_lg"
+        android:layout_marginTop="@dimen/spacing_lg" />
 </LinearLayout>

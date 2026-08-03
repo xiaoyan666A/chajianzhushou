@@ -1,6 +1,8 @@
 package com.chajianzhushou.app;
 
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.View;
@@ -19,6 +21,9 @@ import org.json.JSONObject;
 import java.util.Calendar;
 
 public class MainActivity extends AppCompatActivity {
+    /** 界面字号倍率（0=未初始化，进程启动时从设置读取；设置页修改后重建 Activity 生效） */
+    static volatile float sFontScale = 0f;
+
     private ApiService apiService;
     private boolean tokenRefreshedToday = false;
     private int lastTokenRefreshDay = -1;
@@ -39,6 +44,32 @@ public class MainActivity extends AppCompatActivity {
 
     /** 提供 Application Context 给无 Context 的模块（DirectApiClient/SyncClient 等）写日志。 */
     public static Context getAppContext() { return sAppContext; }
+
+    @Override
+    protected void attachBaseContext(Context newBase) {
+        // 应用界面字号设置：首次从 SharedPreferences 读取，之后由设置页更新静态值并重建 Activity
+        if (sFontScale == 0f) {
+            try {
+                SharedPreferences prefs = newBase.getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+                sFontScale = prefs.getFloat("ui_font_scale", 1f);
+            } catch (Exception e) {
+                sFontScale = 1f;
+            }
+        }
+        super.attachBaseContext(applyFontScale(newBase, sFontScale));
+    }
+
+    /** 在系统字号基础上叠加用户倍率（小/中/大/特大），并做合理钳制 */
+    private static Context applyFontScale(Context base, float userScale) {
+        try {
+            Configuration cfg = new Configuration(base.getResources().getConfiguration());
+            float system = base.getResources().getConfiguration().fontScale;
+            cfg.fontScale = Math.max(0.8f, Math.min(1.5f, system * userScale));
+            return base.createConfigurationContext(cfg);
+        } catch (Throwable t) {
+            return base;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -170,10 +201,10 @@ public class MainActivity extends AppCompatActivity {
         final EditText et = new EditText(this);
         et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         et.setHint("请输入管理员密码");
-        et.setTextSize(15f);
+        et.setTextSize(17f);
         try {
-            et.setTextColor(getResources().getColor(R.color.ink));
-            et.setHintTextColor(getResources().getColor(R.color.muted));
+            et.setTextColor(getResources().getColor(R.color.ink, getTheme()));
+            et.setHintTextColor(getResources().getColor(R.color.muted, getTheme()));
         } catch (Exception ignore) {}
         new AlertDialog.Builder(this)
                 .setTitle("管理员验证")

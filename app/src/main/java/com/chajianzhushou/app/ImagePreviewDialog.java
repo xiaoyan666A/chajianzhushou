@@ -45,6 +45,9 @@ public class ImagePreviewDialog extends Dialog {
 
     private final List<String> imageUrls;
     private final List<String> trackingNumbers;
+    private final List<String> compareUrls;   // 与 imageUrls 平行："另一张照片"URL，空串=无
+    private final List<String> compareNames;  // 平行名称（入库照/出库照）
+    private final List<String> primaryNames;  // 平行名称：当前显示照片的名称（入库照/出库照）
     private final OkHttpClient httpClient;
     private int currentIndex;
 
@@ -55,12 +58,22 @@ public class ImagePreviewDialog extends Dialog {
     private View btnNext;
     private final boolean showNavButtons;
 
-    // 多指缩放状态：双指捏合 0.5x~3x，以视图中心为锚点（保证居中），带比例提示
-    private float scaleFactor = 1f;
-    private boolean zooming = false;
+    // Matrix 缩放/平移：双指捏合（以手指焦点为锚点，1x~3x）+ 单指拖动 + 边界钳制
+    private final android.graphics.Matrix imageMatrix = new android.graphics.Matrix();
+    private float fitScale = 1f;      // 图片适配视图的基础缩放
+    private float currentScale = 1f;  // 当前相对基础缩放的倍数（1x=适配满屏）
+    private boolean zooming = false;  // 捏合进行中
+    private boolean imageMatrixReady = false;
+    private int bitmapW = 0, bitmapH = 0;
+    private boolean dragging = false;
+    private boolean dragMoved = false;
+    private float downX = 0f, downY = 0f;
+    private float lastDragX = 0f, lastDragY = 0f;
     private ScaleGestureDetector scaleDetector;
     private GestureDetector doubleTapDetector;
     private TextView zoomIndicator;
+    private TextView btnCompare;
+    private boolean showingCompare = false;
 
     // 当前正在展示的预览对话框（供自动刷新发现换新照片时同步刷新大图）
     private static volatile ImagePreviewDialog sActiveDialog;
@@ -93,6 +106,7 @@ public class ImagePreviewDialog extends Dialog {
         if (currentIndex >= 0 && currentIndex < imageUrls.size()) {
             if (newUrl.equals(imageUrls.get(currentIndex))) return;
             imageUrls.set(currentIndex, newUrl);
+            showingCompare = false; // 原图已更新，回到原图视图
             loadCurrentImage();
         }
     }
@@ -102,7 +116,7 @@ public class ImagePreviewDialog extends Dialog {
                               int startIndex,
                               List<String> trackingNumbers,
                               OkHttpClient httpClient) {
-        this(context, imageUrls, startIndex, trackingNumbers, httpClient, true);
+        this(context, imageUrls, startIndex, trackingNumbers, httpClient, true, null, null, null);
     }
 
     public ImagePreviewDialog(@NonNull Context context,
@@ -111,9 +125,36 @@ public class ImagePreviewDialog extends Dialog {
                               List<String> trackingNumbers,
                               OkHttpClient httpClient,
                               boolean showNavButtons) {
+        this(context, imageUrls, startIndex, trackingNumbers, httpClient, showNavButtons, null, null, null);
+    }
+
+    public ImagePreviewDialog(@NonNull Context context,
+                              List<String> imageUrls,
+                              int startIndex,
+                              List<String> trackingNumbers,
+                              OkHttpClient httpClient,
+                              boolean showNavButtons,
+                              List<String> compareUrls,
+                              List<String> compareNames) {
+        this(context, imageUrls, startIndex, trackingNumbers, httpClient, showNavButtons,
+                compareUrls, compareNames, null);
+    }
+
+    public ImagePreviewDialog(@NonNull Context context,
+                              List<String> imageUrls,
+                              int startIndex,
+                              List<String> trackingNumbers,
+                              OkHttpClient httpClient,
+                              boolean showNavButtons,
+                              List<String> compareUrls,
+                              List<String> compareNames,
+                              List<String> primaryNames) {
         super(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         this.imageUrls = (imageUrls == null) ? new ArrayList<>() : imageUrls;
         this.trackingNumbers = (trackingNumbers == null) ? new ArrayList<>() : trackingNumbers;
+        this.compareUrls = (compareUrls == null) ? new ArrayList<>() : compareUrls;
+        this.compareNames = (compareNames == null) ? new ArrayList<>() : compareNames;
+        this.primaryNames = (primaryNames == null) ? new ArrayList<>() : primaryNames;
         this.currentIndex = (startIndex >= 0 && startIndex < this.imageUrls.size()) ? startIndex : 0;
         this.httpClient = httpClient;
         this.showNavButtons = showNavButtons;
@@ -137,7 +178,8 @@ public class ImagePreviewDialog extends Dialog {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
                 Gravity.CENTER);
         iv.setLayoutParams(ilp);
-        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        // 使用 Matrix 变换实现缩放/平移（FIT_CENTER 无法拖动，且视图缩放易抖动）
+        iv.setScaleType(ImageView.ScaleType.MATRIX);
         iv.setOnClickListener(v -> {
             // 点击图片不关闭，避免误操作
         });
@@ -154,7 +196,7 @@ public class ImagePreviewDialog extends Dialog {
         android.widget.Button close = new android.widget.Button(getContext());
         close.setText("✕  关闭预览");
         close.setTextColor(0xFFFFFFFF);
-        close.setTextSize(18f);
+        close.setTextSize(20f);
         close.setTypeface(Typeface.DEFAULT_BOLD);
         close.setAllCaps(false);
         GradientDrawable closeBg = new GradientDrawable();
@@ -180,7 +222,7 @@ public class ImagePreviewDialog extends Dialog {
         // 顶部标题："当前/总数    单号：xxx"
         tvTitle = new TextView(getContext());
         tvTitle.setTextColor(0xFFFFFFFF);
-        tvTitle.setTextSize(15f);
+        tvTitle.setTextSize(17f);
         tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
         tvTitle.setGravity(Gravity.CENTER);
         tvTitle.setMaxLines(1);
@@ -212,7 +254,7 @@ public class ImagePreviewDialog extends Dialog {
         btnPrev = new TextView(getContext());
         ((TextView) btnPrev).setText("◀");
         ((TextView) btnPrev).setTextColor(0xFFFFFFFF);
-        ((TextView) btnPrev).setTextSize(22f);
+        ((TextView) btnPrev).setTextSize(24f);
         ((TextView) btnPrev).setGravity(Gravity.CENTER);
         ((TextView) btnPrev).setTypeface(Typeface.DEFAULT_BOLD);
         btnPrev.setBackground(navBgTemplate.getConstantState().newDrawable());
@@ -227,13 +269,14 @@ public class ImagePreviewDialog extends Dialog {
         btnPrev.setOnClickListener(v -> {
             if (imageUrls.size() <= 1) return;
             currentIndex = (currentIndex - 1 + imageUrls.size()) % imageUrls.size();
+            showingCompare = false;
             loadCurrentImage();
         });
 
         btnNext = new TextView(getContext());
         ((TextView) btnNext).setText("▶");
         ((TextView) btnNext).setTextColor(0xFFFFFFFF);
-        ((TextView) btnNext).setTextSize(22f);
+        ((TextView) btnNext).setTextSize(24f);
         ((TextView) btnNext).setGravity(Gravity.CENTER);
         ((TextView) btnNext).setTypeface(Typeface.DEFAULT_BOLD);
         GradientDrawable nextBg = new GradientDrawable();
@@ -252,6 +295,7 @@ public class ImagePreviewDialog extends Dialog {
         btnNext.setOnClickListener(v -> {
             if (imageUrls.size() <= 1) return;
             currentIndex = (currentIndex + 1) % imageUrls.size();
+            showingCompare = false;
             loadCurrentImage();
         });
 
@@ -272,7 +316,7 @@ public class ImagePreviewDialog extends Dialog {
         // ===== 多指缩放：双指捏合 0.5x~3x，中心缩放 + 比例提示 =====
         zoomIndicator = new TextView(getContext());
         zoomIndicator.setTextColor(0xFFFFFFFF);
-        zoomIndicator.setTextSize(13f);
+        zoomIndicator.setTextSize(15f);
         zoomIndicator.setTypeface(Typeface.DEFAULT_BOLD);
         zoomIndicator.setGravity(Gravity.CENTER);
         GradientDrawable zbBg = new GradientDrawable();
@@ -291,59 +335,121 @@ public class ImagePreviewDialog extends Dialog {
         zoomIndicator.setLayoutParams(zlp);
         root.addView(zoomIndicator);
 
+        // ===== 出入库照片对比按钮（底部左侧，有对比照片时显示） =====
+        btnCompare = new TextView(getContext());
+        btnCompare.setText("对比照片");
+        btnCompare.setTextColor(0xFFFFFFFF);
+        btnCompare.setTextSize(15f);
+        btnCompare.setTypeface(Typeface.DEFAULT_BOLD);
+        btnCompare.setGravity(Gravity.CENTER);
+        GradientDrawable cmpBg = new GradientDrawable();
+        cmpBg.setShape(GradientDrawable.RECTANGLE);
+        cmpBg.setCornerRadius(dp(14));
+        cmpBg.setColor(0x99000000);
+        cmpBg.setStroke(dp(1), 0x66FFFFFF);
+        btnCompare.setBackground(cmpBg);
+        btnCompare.setPadding(dp(16), dp(8), dp(16), dp(8));
+        btnCompare.setVisibility(View.GONE);
+        FrameLayout.LayoutParams cmpLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.START | Gravity.BOTTOM);
+        cmpLp.setMargins(dp(16), 0, 0, dp(30));
+        btnCompare.setLayoutParams(cmpLp);
+        btnCompare.setOnClickListener(v -> toggleCompare());
+        root.addView(btnCompare);
+
         scaleDetector = new ScaleGestureDetector(getContext(), new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override
             public boolean onScaleBegin(ScaleGestureDetector detector) {
-                // 防御：手势开始时再次确保缩放锚点在视图中心（Dialog 窗口可能刚完成布局）
-                if (iv.getWidth() > 0 && iv.getHeight() > 0) {
-                    iv.setPivotX(iv.getWidth() / 2f);
-                    iv.setPivotY(iv.getHeight() / 2f);
-                }
+                // 注意：不能在这里调用 ensureBaseMatrix()（它会重置缩放矩阵），
+                // 否则第二次捏合会从 1x 重新开始，缩小也会直接回到原比例。
+                // 基础矩阵在图片加载完成/布局尺寸变化时已经建立好。
                 zooming = true;
                 showZoomIndicator(true);
-                return true;
+                return imageMatrixReady;
             }
             @Override
             public boolean onScale(ScaleGestureDetector detector) {
-                // 边界限制：缩放比例钳制在 0.5x~3x
-                float next = scaleFactor * detector.getScaleFactor();
-                next = Math.max(0.5f, Math.min(3f, next));
-                if (next != scaleFactor) {
-                    scaleFactor = next;
-                    applyScale(next, false);
-                    if (zoomIndicator != null) zoomIndicator.setText(Math.round(scaleFactor * 100) + "%");
+                if (!imageMatrixReady) return false;
+                // 边界限制：缩放钳制在 1x~3x（相对适配比例）；
+                // 以双指焦点为锚点缩放，避免中心缩放导致图片相对手指抖动
+                float factor = detector.getScaleFactor();
+                float next = Math.max(1f, Math.min(3f, currentScale * factor));
+                float applied = next / currentScale;
+                if (applied != 1f) {
+                    currentScale = next;
+                    imageMatrix.postScale(applied, applied, detector.getFocusX(), detector.getFocusY());
+                    iv.setImageMatrix(imageMatrix);
+                    if (zoomIndicator != null) zoomIndicator.setText(Math.round(currentScale * 100) + "%");
                 }
                 return true;
             }
             @Override
             public void onScaleEnd(ScaleGestureDetector detector) {
                 zooming = false;
-                animateToBounds();
+                clampMatrix();
                 showZoomIndicator(false);
             }
         });
         doubleTapDetector = new GestureDetector(getContext(), new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
-                resetZoom();
+                animateReset();
                 return true;
             }
         });
         iv.setOnTouchListener((v, event) -> {
             if (scaleDetector != null) scaleDetector.onTouchEvent(event);
             if (doubleTapDetector != null) doubleTapDetector.onTouchEvent(event);
-            // 捏合进行中或双指按下时消费事件，避免误触发点击
-            return zooming || event.getPointerCount() >= 2;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    dragging = true;
+                    dragMoved = false;
+                    downX = event.getX();
+                    downY = event.getY();
+                    lastDragX = downX;
+                    lastDragY = downY;
+                    break;
+                case MotionEvent.ACTION_POINTER_DOWN:
+                    // 第二根手指按下：取消单指拖动，交给捏合缩放
+                    dragging = false;
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    // 放大后才能拖动图片
+                    if (dragging && !zooming && currentScale > 1.01f && imageMatrixReady) {
+                        if (!dragMoved) {
+                            int slop = android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop();
+                            if (Math.abs(event.getX() - downX) < slop && Math.abs(event.getY() - downY) < slop) break;
+                            dragMoved = true;
+                        }
+                        float dx = event.getX() - lastDragX;
+                        float dy = event.getY() - lastDragY;
+                        if (dx != 0f || dy != 0f) {
+                            imageMatrix.postTranslate(dx, dy);
+                            iv.setImageMatrix(imageMatrix);
+                            lastDragX = event.getX();
+                            lastDragY = event.getY();
+                        }
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (dragMoved) clampMatrix();
+                    dragging = false;
+                    dragMoved = false;
+                    break;
+            }
+            // 捏合/拖动进行中或双指按下时消费事件，普通单击放行（保留点击关闭）
+            return zooming || (dragging && dragMoved) || event.getPointerCount() >= 2;
         });
-        // 以视图中心为缩放锚点：缩放时图片始终围绕中心，保持居中
-        // 必须在每次布局完成后同步 pivot（Dialog 窗口显示后才完成布局；
-        // 过早的 iv.post 可能拿到 0 宽高，导致 pivot 落在左上角、缩放时图片抖动偏移）
+        // 布局尺寸变化时重建基础矩阵（Matrix 缩放与布局无关，无需 pivot）
         iv.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int w = r - l;
             int h = b - t;
-            if (w > 0 && h > 0) {
-                v.setPivotX(w / 2f);
-                v.setPivotY(h / 2f);
+            int ow = or - ol;
+            int oh = ob - ot;
+            if (w > 0 && h > 0 && (w != ow || h != oh)) {
+                ensureBaseMatrix();
             }
         });
         setContentView(root);
@@ -394,17 +500,18 @@ public class ImagePreviewDialog extends Dialog {
         if (pb != null) pb.setVisibility(View.VISIBLE);
         if (iv != null) iv.setImageBitmap(null);
         // 切换图片时重置缩放（立即、无动画），避免上一张的缩放延续到下一张
-        scaleFactor = 1f;
+        imageMatrixReady = false;
+        currentScale = 1f;
         if (iv != null) {
-            iv.setScaleX(1f);
-            iv.setScaleY(1f);
+            iv.setImageMatrix(new android.graphics.Matrix());
         }
         if (zoomIndicator != null) {
             zoomIndicator.removeCallbacks(zoomFadeRunnable);
             zoomIndicator.setAlpha(0f);
         }
+        updateCompareButton();
 
-        String url = imageUrls.get(currentIndex);
+        String url = showingCompare ? compareUrl(currentIndex) : imageUrls.get(currentIndex);
         if (url == null || url.length() == 0) {
             if (pb != null) pb.setVisibility(View.GONE);
             Toast.makeText(getContext(), "当前图片地址为空", Toast.LENGTH_SHORT).show();
@@ -416,23 +523,28 @@ public class ImagePreviewDialog extends Dialog {
             return;
         }
 
-        // 1) 优先查磁盘缓存（以单号为 key，避免 S3 预签名 URL 过期后预览空白；URL变化时旧图自动作废）
-        java.io.File diskFile = (trackingNo != null && trackingNo.length() > 0)
-                ? ImageCacheManager.getCachedFile(trackingNo, url) : null;
-        if (diskFile != null) {
-            try {
-                Bitmap bmp = BitmapFactory.decodeFile(diskFile.getAbsolutePath());
-                if (bmp != null && !bmp.isRecycled()) {
-                    if (pb != null) pb.setVisibility(View.GONE);
-                    if (iv != null) iv.setImageBitmap(bmp);
-                    return;
+        // 1) 优先查磁盘缓存（仅原图；对比图避免与单号缓存文件冲突，走内存+网络）
+        if (!showingCompare) {
+            java.io.File diskFile = (trackingNo != null && trackingNo.length() > 0)
+                    ? ImageCacheManager.getCachedFile(trackingNo, url) : null;
+            if (diskFile != null) {
+                try {
+                    Bitmap bmp = BitmapFactory.decodeFile(diskFile.getAbsolutePath());
+                    if (bmp != null && !bmp.isRecycled()) {
+                        if (pb != null) pb.setVisibility(View.GONE);
+                        if (iv != null) {
+                            iv.setImageBitmap(bmp);
+                            ensureBaseMatrix();
+                        }
+                        return;
+                    }
+                    // 解码失败 → 磁盘缓存文件可能损坏，删除它以允许后续重新下载
+                    Log.w("ImgPreview", "磁盘缓存解码失败，删除损坏文件: " + trackingNo);
+                    diskFile.delete();
+                } catch (Exception e) {
+                    Log.w("ImgPreview", "磁盘缓存解码异常: " + trackingNo + " " + e.getMessage());
+                    try { diskFile.delete(); } catch (Exception ignored) {}
                 }
-                // 解码失败 → 磁盘缓存文件可能损坏，删除它以允许后续重新下载
-                Log.w("ImgPreview", "磁盘缓存解码失败，删除损坏文件: " + trackingNo);
-                diskFile.delete();
-            } catch (Exception e) {
-                Log.w("ImgPreview", "磁盘缓存解码异常: " + trackingNo + " " + e.getMessage());
-                try { diskFile.delete(); } catch (Exception ignored) {}
             }
         }
 
@@ -441,13 +553,17 @@ public class ImagePreviewDialog extends Dialog {
         Bitmap cached = loader.getCachedBitmap(url);
         if (cached != null) {
             if (pb != null) pb.setVisibility(View.GONE);
-            if (iv != null) iv.setImageBitmap(cached);
+            if (iv != null) {
+                iv.setImageBitmap(cached);
+                ensureBaseMatrix();
+            }
             return;
         }
         // 3) 网络下载兜底
         final String fallbackTrackingNo = trackingNo;
         loader.loadFull(url, iv, 0, bitmap -> {
             if (pb != null) pb.setVisibility(View.GONE);
+            if (bitmap != null) ensureBaseMatrix();
             if (bitmap == null) {
                 // 网络下载失败（URL 可能已过期），延迟 2 秒再查一次磁盘缓存
                 // 场景：缩略图首次下载尚未完成时用户就点击了放大
@@ -459,6 +575,7 @@ public class ImagePreviewDialog extends Dialog {
                                 Bitmap retryBmp = BitmapFactory.decodeFile(retryFile.getAbsolutePath());
                                 if (retryBmp != null && !retryBmp.isRecycled() && iv != null) {
                                     iv.setImageBitmap(retryBmp);
+                                    ensureBaseMatrix();
                                     return;
                                 }
                             } catch (Exception ignored) {}
@@ -477,33 +594,86 @@ public class ImagePreviewDialog extends Dialog {
         });
     }
 
-    // ===== 多指缩放辅助 =====
+    // ===== Matrix 缩放/平移辅助 =====
 
-    /** 应用缩放：animated=true 时用属性动画平滑过渡（手势结束回弹/复位场景） */
-    private void applyScale(float f, boolean animated) {
+    /** 以基础矩阵重建：按 fitScale*scale 缩放并居中（scale=1 即适配满屏） */
+    private void rebuildToBase(float scale) {
+        if (iv == null || bitmapW <= 0 || bitmapH <= 0) return;
+        float dispW = bitmapW * fitScale * scale;
+        float dispH = bitmapH * fitScale * scale;
+        imageMatrix.reset();
+        imageMatrix.postScale(fitScale * scale, fitScale * scale);
+        imageMatrix.postTranslate((iv.getWidth() - dispW) / 2f, (iv.getHeight() - dispH) / 2f);
+        iv.setImageMatrix(imageMatrix);
+    }
+
+    /** 根据当前 Drawable/视图尺寸计算基础缩放并重置变换（切换图片或尺寸变化时调用） */
+    private void ensureBaseMatrix() {
         if (iv == null) return;
-        if (animated) {
-            iv.animate().scaleX(f).scaleY(f).setDuration(180).start();
-        } else {
-            iv.setScaleX(f);
-            iv.setScaleY(f);
+        android.graphics.drawable.Drawable d = iv.getDrawable();
+        int vw = iv.getWidth();
+        int vh = iv.getHeight();
+        if (d == null || vw <= 0 || vh <= 0) {
+            imageMatrixReady = false;
+            return;
+        }
+        int iw = d.getIntrinsicWidth();
+        int ih = d.getIntrinsicHeight();
+        if (iw <= 0 || ih <= 0) {
+            imageMatrixReady = false;
+            return;
+        }
+        bitmapW = iw;
+        bitmapH = ih;
+        fitScale = Math.min((float) vw / iw, (float) vh / ih);
+        currentScale = 1f;
+        imageMatrixReady = true;
+        rebuildToBase(1f);
+    }
+
+    /** 平移边界钳制：图片某边小于视图时锁居中；大于视图时不允许拖出空白 */
+    private void clampMatrix() {
+        if (!imageMatrixReady || iv == null) return;
+        float[] v = new float[9];
+        imageMatrix.getValues(v);
+        float sx = v[android.graphics.Matrix.MSCALE_X];
+        float tx = v[android.graphics.Matrix.MTRANS_X];
+        float ty = v[android.graphics.Matrix.MTRANS_Y];
+        float dispW = bitmapW * sx;
+        float dispH = bitmapH * sx;
+        float vw = iv.getWidth();
+        float vh = iv.getHeight();
+        float newTx = tx;
+        float newTy = ty;
+        if (dispW <= vw) newTx = (vw - dispW) / 2f;
+        else newTx = Math.max(vw - dispW, Math.min(0f, tx));
+        if (dispH <= vh) newTy = (vh - dispH) / 2f;
+        else newTy = Math.max(vh - dispH, Math.min(0f, ty));
+        if (newTx != tx || newTy != ty) {
+            imageMatrix.postTranslate(newTx - tx, newTy - ty);
+            iv.setImageMatrix(imageMatrix);
         }
     }
 
-    /** 双击复位到 100% */
-    private void resetZoom() {
-        scaleFactor = 1f;
-        applyScale(1f, true);
-        showZoomIndicator(false);
-    }
-
-    /** 手势结束后平滑回到合法缩放范围（0.5x~3x 边界回弹） */
-    private void animateToBounds() {
-        float target = Math.max(0.5f, Math.min(3f, scaleFactor));
-        if (target != scaleFactor) {
-            scaleFactor = target;
-            applyScale(target, true);
-        }
+    /** 双击复位：平滑回到适配比例 */
+    private void animateReset() {
+        if (!imageMatrixReady || iv == null) return;
+        final float start = currentScale;
+        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(start, 1f);
+        anim.setDuration(180);
+        anim.addUpdateListener(a -> {
+            currentScale = (float) a.getAnimatedValue();
+            rebuildToBase(currentScale);
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                currentScale = 1f;
+                rebuildToBase(1f);
+                showZoomIndicator(false);
+            }
+        });
+        anim.start();
     }
 
     /** 缩放比例提示：手势中常显，结束时延迟淡出 */
@@ -513,7 +683,7 @@ public class ImagePreviewDialog extends Dialog {
         if (show) {
             zoomIndicator.animate().cancel();
             zoomIndicator.setAlpha(1f);
-            if (zooming) zoomIndicator.setText(Math.round(scaleFactor * 100) + "%");
+            if (zooming) zoomIndicator.setText(Math.round(currentScale * 100) + "%");
         } else {
             zoomIndicator.postDelayed(zoomFadeRunnable, 600);
         }
@@ -524,6 +694,49 @@ public class ImagePreviewDialog extends Dialog {
             zoomIndicator.animate().alpha(0f).setDuration(250).start();
         }
     };
+
+    // ===== 出入库照片对比 =====
+
+    private String compareUrl(int idx) {
+        if (compareUrls == null || idx < 0 || idx >= compareUrls.size()) return "";
+        String u = compareUrls.get(idx);
+        return (u == null) ? "" : u;
+    }
+
+    private String compareName(int idx) {
+        if (compareNames == null || idx < 0 || idx >= compareNames.size()) return "对比照片";
+        String n = compareNames.get(idx);
+        return (n == null || n.isEmpty()) ? "对比照片" : n;
+    }
+
+    private String primaryName(int idx) {
+        if (primaryNames == null || idx < 0 || idx >= primaryNames.size()) return "原图";
+        String n = primaryNames.get(idx);
+        return (n == null || n.isEmpty()) ? "原图" : n;
+    }
+
+    /** 根据当前页是否有对比照片，显示/隐藏切换按钮并更新文案 */
+    private void updateCompareButton() {
+        if (btnCompare == null) return;
+        String cmp = compareUrl(currentIndex);
+        if (cmp.isEmpty()) {
+            btnCompare.setVisibility(View.GONE);
+            return;
+        }
+        btnCompare.setVisibility(View.VISIBLE);
+        // 当前显示的是入库/原图 → 按钮"点击查看出库图片"；
+        // 当前显示的是出库图 → 按钮"返回查看入库图片"
+        btnCompare.setText(showingCompare
+                ? "返回查看" + primaryName(currentIndex)
+                : "点击查看" + compareName(currentIndex));
+    }
+
+    /** 点击切换：原图 ↔ 对比照片（入库照/出库照） */
+    private void toggleCompare() {
+        if (compareUrl(currentIndex).isEmpty()) return;
+        showingCompare = !showingCompare;
+        loadCurrentImage();
+    }
 
     private int dp(int v) {
         float d = getContext().getResources().getDisplayMetrics().density;
@@ -550,6 +763,40 @@ public class ImagePreviewDialog extends Dialog {
             List<String> nos = (billCode != null && billCode.length() > 0) 
                     ? java.util.Collections.singletonList(billCode) : null;
             ImagePreviewDialog d = new ImagePreviewDialog(ctx, urls, 0, nos, client, false);
+            d.show();
+        } catch (Throwable t) {
+            Toast.makeText(ctx, "无法预览: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** 多张图片预览 + 出入库照片对比列表（compareUrls/compareNames 与 imageUrls 顺序一致，空串=无对比图） */
+    public static void show(@Nullable Context ctx,
+                            List<String> urls,
+                            int startIndex,
+                            List<String> trackingNumbers,
+                            OkHttpClient client,
+                            List<String> compareUrls,
+                            List<String> compareNames) {
+        show(ctx, urls, startIndex, trackingNumbers, client, compareUrls, compareNames, null);
+    }
+
+    /** 多张图片预览 + 出入库照片对比（含当前显示照片的名称，用于切换按钮文案） */
+    public static void show(@Nullable Context ctx,
+                            List<String> urls,
+                            int startIndex,
+                            List<String> trackingNumbers,
+                            OkHttpClient client,
+                            List<String> compareUrls,
+                            List<String> compareNames,
+                            List<String> primaryNames) {
+        if (ctx == null || urls == null || urls.isEmpty()) {
+            if (ctx != null) Toast.makeText(ctx, "暂无图片", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            ImagePreviewDialog d = new ImagePreviewDialog(
+                    ctx, urls, startIndex, trackingNumbers, client, true,
+                    compareUrls, compareNames, primaryNames);
             d.show();
         } catch (Throwable t) {
             Toast.makeText(ctx, "无法预览: " + t.getMessage(), Toast.LENGTH_SHORT).show();

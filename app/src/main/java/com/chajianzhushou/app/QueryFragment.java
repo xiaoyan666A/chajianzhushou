@@ -2,6 +2,8 @@ package com.chajianzhushou.app;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Typeface;
@@ -10,7 +12,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.speech.RecognizerIntent;
 import android.text.Editable;
+import android.text.SpannableStringBuilder;
 import android.text.TextWatcher;
+import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -20,6 +24,7 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.FrameLayout;
@@ -47,7 +52,9 @@ public class QueryFragment extends Fragment {
     private static final String TAG = "QueryFragment";
     private static final String PREFS_GRID = "query_grid_view";
     private static final String KEY_AUTO_REFRESH = "auto_refresh_interval";
-    private static final int REQ_VOICE = 1001;
+    private static final String PREFS_HISTORY = "query_history";
+    private static final int MAX_HISTORY = 20;
+    private static final int HISTORY_PANEL_MAX_ROWS = 10;
 
     // Views
     private ScrollView scrollView;
@@ -62,6 +69,7 @@ public class QueryFragment extends Fragment {
     private SwitchCompat switchGridView;
     private TextView tvResultCount;
     private LinearLayout resultsContainer;
+    private LinearLayout historyPanel;
     private ProgressBar progressBar;
     private LinearLayout tvNoResults;
     private FrameLayout loadingMask;
@@ -73,10 +81,14 @@ public class QueryFragment extends Fragment {
 
     // State
     private String searchType = "phoneTail";
+    // 最后一次实际查询的值：清空输入框后，自动刷新仍按此值继续查询，列表不消失
+    private String lastQueriedBillCode = "";
     private boolean isGridView = false;
     private boolean showDelivered = true;
     private boolean isAutoRefresh = false;
     private int lastPendingCount = -1;
+    // 用户最近一次操作列表（按下/松手）的时间：用于避免快速滑动时底部加载/滚动恢复干扰
+    private long lastUserScrollAt = 0;
     private volatile boolean isViewReady = false;
     private volatile long lastQueryAt = 0;
     private volatile boolean isQuerying = false;
@@ -98,6 +110,16 @@ public class QueryFragment extends Fragment {
     // 图片预览：所有非空图片 URL + 对应单号（支持跨包裹上下张翻页）
     private final List<String> allImageUrls = new ArrayList<>();
     private final List<String> allTrackingNos = new ArrayList<>();
+    // 直连模式懒加载：单号+原始路径 → 已解析成功的图片 URL（供预览列表重建与重绘时复用）
+    private final java.util.Map<String, String> resolvedImageUrls = new java.util.concurrent.ConcurrentHashMap<>();
+    // 出入库照片对比：单号 → {另一张照片URL, 名称(入库照/出库照)}，供预览大图切换
+    private final java.util.Map<String, String[]> comparePhotoMap = new java.util.concurrent.ConcurrentHashMap<>();
+    // 超时件标注配置：remark=="超时出库" 且 出库时间在"最近N天"内的已出库包裹，叠加三层标注
+    private static final String KEY_TIMEOUT_MARK_DAYS = "timeout_mark_days";
+    private static final int DEFAULT_TIMEOUT_MARK_DAYS = 3;
+    private static final String KEY_TIMEOUT_MARK_ENABLED = "timeout_mark_enabled";
+    // 单号 → 卡片边框/标签闪烁任务（超时件专用，缓慢持续闪烁）
+    private final java.util.Map<String, Runnable> timeoutBlinkMap = new java.util.HashMap<>();
 
     // Server sync state
     private boolean serverConnectEnabled = false;
@@ -118,6 +140,31 @@ public class QueryFragment extends Fragment {
     // TTS
     private TtsHelper ttsHelper;
 
+    // 语音识别使用 Activity Result API（替代已弃用的 startActivityForResult/onActivityResult）
+    private final androidx.activity.result.ActivityResultLauncher<Intent> voiceLauncher =
+            registerForActivityResult(
+                    new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (!isViewReady) return;
+                        if (result.getResultCode() == android.app.Activity.RESULT_OK && result.getData() != null) {
+                            ArrayList<String> results = result.getData().getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                            if (results != null && results.size() > 0) {
+                                String spokenText = results.get(0);
+                                // 语音指令解析：识别"查一下尾号2979 / 取件码1234 / 运单号xxx"等关键词与类型
+                                String[] parsed = parseVoiceQuery(spokenText);
+                                if (etBillCode != null) {
+                                    etBillCode.setText(parsed[0]);
+                                }
+                                setSearchType(parsed[1]);
+                                try {
+                                    LogRecorder.info(requireContext(), "ASR", "语音查询",
+                                            "value=" + parsed[0] + " type=" + parsed[1]);
+                                } catch (Exception ignore) {}
+                                performQuery(true, false, null, false); // 语音识别不计入查询历史
+                            }
+                        }
+                    });
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
@@ -136,6 +183,7 @@ public class QueryFragment extends Fragment {
         switchGridView = view.findViewById(R.id.switch_grid_view);
         tvResultCount = view.findViewById(R.id.tv_result_count);
         resultsContainer = view.findViewById(R.id.results_container);
+        historyPanel = view.findViewById(R.id.history_panel);
         // 网格行通过负 margin 向外贴边，行宽会超出本容器边界；
         // 关闭子视图裁剪，避免最左/最右卡片边缘（含边框、圆角）被裁掉
         resultsContainer.setClipChildren(false);
@@ -288,7 +336,54 @@ public class QueryFragment extends Fragment {
         });
 
         // Query button
-        btnQuery.setOnClickListener(v -> performQuery(true));
+        btnQuery.setOnClickListener(v -> {
+            hideHistoryPanel();
+            performQuery(true);
+        });
+
+        // 输入框聚焦：展开最近查询记录；失焦：延迟收起（给点击记录留时间）
+        etBillCode.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                renderHistory();
+            } else {
+                mainHandler.postDelayed(() -> {
+                    if (historyPanel != null && !etBillCode.hasFocus()) {
+                        historyPanel.setVisibility(View.GONE);
+                    }
+                }, 200);
+            }
+        });
+
+        // 点击输入框（即使已保持焦点）也重新展开查询历史——修复"第二次点击不显示"：
+        // 按返回键收起键盘时输入框不丢焦点，第二次点击不会触发 onFocusChange
+        etBillCode.setOnTouchListener((v, event) -> {
+            if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
+                renderHistory();
+            }
+            return false;
+        });
+
+        // 键盘隐藏时自动收起查询历史面板（输入框可能仍保持焦点）。
+        // 用"显示→隐藏"状态跳变判断，避免键盘弹起动画期间（高度还很小）误把面板收起。
+        final boolean[] keyboardVisible = {false};
+        view.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            if (historyPanel == null) return;
+            try {
+                android.graphics.Rect r = new android.graphics.Rect();
+                view.getWindowVisibleDisplayFrame(r);
+                int screenH = view.getRootView().getHeight();
+                int kbH = screenH - r.bottom;
+                boolean nowVisible = kbH >= screenH / 4;
+                if (keyboardVisible[0] && !nowVisible) {
+                    historyPanel.setVisibility(View.GONE);
+                } else if (!keyboardVisible[0] && nowVisible
+                        && etBillCode != null && etBillCode.hasFocus()) {
+                    // 键盘从隐藏→弹出且输入框有焦点：补一次显示
+                    renderHistory();
+                }
+                keyboardVisible[0] = nowVisible;
+            } catch (Throwable ignore) {}
+        });
 
         // Show delivered switch
         if (switchShowDelivered != null) {
@@ -340,8 +435,10 @@ public class QueryFragment extends Fragment {
                 int action = event.getAction();
                 if (action == android.view.MotionEvent.ACTION_DOWN) {
                     isUserTouching = true;
+                    lastUserScrollAt = System.currentTimeMillis();
                 } else if (action == android.view.MotionEvent.ACTION_UP
                         || action == android.view.MotionEvent.ACTION_CANCEL) {
+                    lastUserScrollAt = System.currentTimeMillis();
                     // 松手后延迟重置，等待惯性滚动结束
                     mainHandler.postDelayed(() -> isUserTouching = false, 600);
                 }
@@ -395,34 +492,25 @@ public class QueryFragment extends Fragment {
         if (!isViewReady || resultsContainer == null) return;
         // 只在网格模式下且已有查询结果时才需要重绘
         if (isGridView && currentPackages != null && currentPackages.size() > 0) {
-            mainHandler.post(() -> {
-                // 重新计算跨度，全量重绘（renderList 会重置 renderedCount 并分批渲染首屏）
-                renderList();
+            // 旋转后列数必须重算：等容器按新方向完成布局后再强制整表重建。
+            // 若在布局前用旧宽度重建，列数会沿用旧方向的值，导致每次旋转列数错乱/递增；
+            // 若走差分路径，旧行会按旧列数原样保留。
+            resultsContainer.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                @Override
+                public void onLayoutChange(View v, int l, int t, int r, int b,
+                                           int ol, int ot, int or, int ob) {
+                    if (r - l == or - ol && b - t == ob - ot) return; // 尺寸未变，等待下一次
+                    resultsContainer.removeOnLayoutChangeListener(this);
+                    // 布局已完成：投递到主队列再重建，避免在布局过程中修改视图导致列表消失
+                    resultsContainer.post(() -> {
+                        if (!isViewReady || resultsContainer == null) return;
+                        boolean wasAuto = isAutoRefresh;
+                        isAutoRefresh = false;
+                        renderList();
+                        isAutoRefresh = wasAuto;
+                    });
+                }
             });
-        }
-    }
-
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_VOICE && resultCode == -1 && data != null) {
-            ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-            if (results != null && results.size() > 0) {
-                String spokenText = results.get(0);
-                if (etBillCode != null) {
-                    etBillCode.setText(spokenText);
-                }
-                // Auto-detect search type based on digit count
-                String digits = spokenText.replaceAll("[^0-9]", "");
-                if (digits.length() == 11) {
-                    setSearchType("phoneTail");
-                } else if (digits.length() == 4) {
-                    setSearchType("pickupCode");
-                } else {
-                    setSearchType("billCode");
-                }
-                performQuery(true);
-            }
         }
     }
 
@@ -435,6 +523,7 @@ public class QueryFragment extends Fragment {
                 outState.putString("qb_etBillCode", etBillCode.getText().toString());
             }
             outState.putString("qb_searchType", searchType);
+            outState.putString("qb_lastQueriedBillCode", lastQueriedBillCode);
             outState.putBoolean("qb_showDelivered", showDelivered);
             outState.putBoolean("qb_isGridView", isGridView);
             if (switchShowDelivered != null) {
@@ -472,6 +561,10 @@ public class QueryFragment extends Fragment {
             if (savedType != null && savedType.length() > 0) {
                 searchType = savedType;
                 updateTypeButtons();
+            }
+            String savedLast = savedInstanceState.getString("qb_lastQueriedBillCode", "");
+            if (savedLast != null && savedLast.length() > 0) {
+                lastQueriedBillCode = savedLast;
             }
             if (savedInstanceState.containsKey("qb_showDelivered")) {
                 showDelivered = savedInstanceState.getBoolean("qb_showDelivered", showDelivered);
@@ -528,6 +621,7 @@ public class QueryFragment extends Fragment {
         }
 
         stopAutoRefresh();
+        stopAllTimeoutBlink();
 
         if (ttsHelper != null) {
             try { ttsHelper.stop(); } catch (Exception ignore) {}
@@ -544,6 +638,7 @@ public class QueryFragment extends Fragment {
         switchGridView = null;
         tvResultCount = null;
         resultsContainer = null;
+        historyPanel = null;
         progressBar = null;
         tvNoResults = null;
         loadingMask = null;
@@ -615,10 +710,34 @@ public class QueryFragment extends Fragment {
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN");
             intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "说出单号、手机号或取件码");
-            startActivityForResult(intent, REQ_VOICE);
+            voiceLauncher.launch(intent);
         } catch (Exception e) {
             safeToast("语音识别不可用: " + e.getMessage());
         }
+    }
+
+    /**
+     * 语音指令解析：返回 {查询值, 搜索类型}。
+     * 关键词优先：尾号/手机尾 → phoneTail；取件码/取货码 → pickupCode；运单/单号 → billCode。
+     * 无关键词时按数字长度兜底：11位→手机尾号，4位→取件码，其他→运单号。
+     */
+    private String[] parseVoiceQuery(String spoken) {
+        String s = (spoken == null) ? "" : spoken.trim();
+        String digits = s.replaceAll("[^0-9]", "");
+        String type;
+        if (s.contains("尾号") || s.contains("手机尾") || s.toLowerCase().contains("电话尾")) {
+            type = "phoneTail";
+        } else if (s.contains("取件码") || s.contains("取货码") || s.contains("提货码")) {
+            type = "pickupCode";
+        } else if (s.contains("运单") || s.contains("快递单") || s.contains("单号") || s.contains("包裹号")) {
+            type = "billCode";
+        } else {
+            if (digits.length() == 11) type = "phoneTail";
+            else if (digits.length() == 4) type = "pickupCode";
+            else type = "billCode";
+        }
+        String value = digits.length() > 0 ? digits : s;
+        return new String[]{value, type};
     }
 
     // ===== Auto Refresh =====
@@ -630,8 +749,9 @@ public class QueryFragment extends Fragment {
         try {
             // 自动刷新间隔关闭时：完全隐藏文字与圆环
             boolean enabled = getAutoRefreshSeconds() > 0;
-            // 自动刷新执行中禁用"竖向排列"开关，避免网格/列表结构切换与自动刷新冲突
-            if (switchGridView != null) switchGridView.setEnabled(enabled && !active);
+            // 仅在自动刷新"执行中"禁用"竖向排列"开关（避免切换与刷新冲突）；
+            // 自动刷新间隔关闭时开关保持可用，不受影响。
+            if (switchGridView != null) switchGridView.setEnabled(!active);
             if (active) {
                 autoRefreshIndicator.setBackgroundTintList(
                         android.content.res.ColorStateList.valueOf(0xFF00F5D4));
@@ -640,7 +760,7 @@ public class QueryFragment extends Fragment {
                 autoRefreshIndicator.startAnimation(autoRefreshSpinAnim);
                 if (autoRefreshLabel != null) {
                     autoRefreshLabel.setVisibility(enabled ? View.VISIBLE : View.GONE);
-                    autoRefreshLabel.setTextColor(getResources().getColor(R.color.accent));
+                    autoRefreshLabel.setTextColor(getResources().getColor(R.color.accent, requireContext().getTheme()));
                     autoRefreshLabel.setAlpha(1f);
                 }
                 autoRefreshIndicator.setVisibility(enabled ? View.VISIBLE : View.GONE);
@@ -652,7 +772,7 @@ public class QueryFragment extends Fragment {
                 if (autoRefreshLabel != null) {
                     // 文字保持显示但变灰、变暗、更透明（与圆环空闲态视觉一致）
                     autoRefreshLabel.setVisibility(enabled ? View.VISIBLE : View.GONE);
-                    autoRefreshLabel.setTextColor(getResources().getColor(R.color.muted));
+                    autoRefreshLabel.setTextColor(getResources().getColor(R.color.muted, requireContext().getTheme()));
                     autoRefreshLabel.setAlpha(0.5f);
                 }
                 autoRefreshIndicator.setVisibility(enabled ? View.VISIBLE : View.GONE);
@@ -691,9 +811,19 @@ public class QueryFragment extends Fragment {
                     autoRefreshHandler.postDelayed(this, 2000);
                     return;
                 }
-                if (etBillCode != null && etBillCode.getText().toString().trim().length() > 0) {
-                    performQuery(false, true);
+                if (etBillCode != null) {
+                    String q = etBillCode.getText().toString().trim();
+                    if (q.length() == 0) {
+                        // 输入框被清空：保留列表，继续按"最后一次查询条件"自动刷新
+                        q = lastQueriedBillCode;
+                    }
+                    if (q.length() > 0) {
+                        performQuery(false, true, q);
+                        return;
+                    }
                 }
+                // 从未查询过且输入为空：没有可继续刷新的条件，停止并复位指示器
+                stopAutoRefresh();
             }
         };
         autoRefreshHandler.postDelayed(autoRefreshRunnable, intervalMs);
@@ -717,10 +847,23 @@ public class QueryFragment extends Fragment {
     // ===== Query =====
 
     private void performQuery(boolean syncToPc) {
-        performQuery(syncToPc, false);
+        performQuery(syncToPc, false, null, true);
     }
 
     private void performQuery(boolean syncToPc, boolean isAuto) {
+        performQuery(syncToPc, isAuto, null, true);
+    }
+
+    private void performQuery(boolean syncToPc, boolean isAuto, String explicitValue) {
+        performQuery(syncToPc, isAuto, explicitValue, true);
+    }
+
+    /**
+     * @param explicitValue 显式查询值；为 null 时读取输入框内容。
+     *                     输入框清空后自动刷新会传入最后一次查询值，保证列表不消失、刷新继续。
+     * @param recordHistory 是否计入"最近查询"历史（语音识别、自动刷新不计入）
+     */
+    private void performQuery(boolean syncToPc, boolean isAuto, String explicitValue, boolean recordHistory) {
         if (!isViewReady || etBillCode == null) return;
         long now = System.currentTimeMillis();
         if (isQuerying) return;
@@ -731,11 +874,17 @@ public class QueryFragment extends Fragment {
         __tRespArrived = 0;
         __queryMode = "";
 
-        String billCode = etBillCode.getText().toString().trim();
+        String billCode = (explicitValue != null) ? explicitValue : etBillCode.getText().toString().trim();
         if (billCode.isEmpty()) {
             isQuerying = false;
             if (!isAuto) safeToast("请输入查询内容");
             return;
+        }
+        // 记住本次实际查询条件：清空输入后自动刷新仍按此继续
+        lastQueriedBillCode = billCode;
+        // 记录查询历史（输入框聚焦时展示"最近查询"）；自动刷新/语音识别不计入
+        if (recordHistory && !isAuto) {
+            recordQueryHistory(billCode, searchType);
         }
 
         boolean sd = (switchShowDelivered != null) ? switchShowDelivered.isChecked() : showDelivered;
@@ -821,7 +970,13 @@ public class QueryFragment extends Fragment {
         if (!isViewReady) return;
         int interval = getAutoRefreshSeconds();
         if (interval <= 0) return;
-        if (etBillCode == null || etBillCode.getText().toString().trim().isEmpty()) {
+        if (etBillCode == null) {
+            stopAutoRefresh();
+            return;
+        }
+        String q = etBillCode.getText().toString().trim();
+        if (q.length() == 0) q = lastQueriedBillCode; // 输入清空后仍按最后一次查询条件继续
+        if (q.length() == 0) {
             stopAutoRefresh();
             return;
         }
@@ -875,10 +1030,10 @@ public class QueryFragment extends Fragment {
                 try {
                     JSONObject item = data.getJSONObject(i);
                     if (item != null) {
-                        // Filter by showDelivered
+                        // Filter by showDelivered：关闭"显示已出库"时仍保留超时件（remark=超时出库且在N天内）
                         if (!sd) {
                             String st = item.optString("status", "");
-                            if ("delivered".equals(st)) continue;
+                            if ("delivered".equals(st) && !isTimeoutPackage(item)) continue;
                         }
                         newPackages.add(item);
                     }
@@ -889,6 +1044,7 @@ public class QueryFragment extends Fragment {
         final List<JSONObject> oldPackages = currentPackages; // 保存旧列表用于合并
         currentPackages = newPackages;
 
+        java.util.Set<String> autoFreshBillCodes = null; // pendingOnly 响应基线，供补查"消失的待取件"用
         if (isAuto && oldPackages != null && oldPackages.size() > 0) {
             java.util.Set<String> newBillCodes = new java.util.HashSet<>();
             for (JSONObject pkg : newPackages) {
@@ -907,6 +1063,25 @@ public class QueryFragment extends Fragment {
                     currentPackages.add(oldPkg);
                 }
             }
+            // 显示已出库开启：旧"待取件"在响应中消失（多半刚出库）时，先保留原卡片避免闪烁消失，
+            // 并记录 pendingOnly 响应基线，稍后按单号补查最新状态、原位更新为已出库。
+            if (sd) {
+                autoFreshBillCodes = newBillCodes;
+                for (JSONObject oldPkg : oldPackages) {
+                    if ("delivered".equals(oldPkg.optString("status", ""))) continue;
+                    String bc = firstNonEmpty(oldPkg.optString("billCode", ""),
+                            oldPkg.optString("trackingNumber", ""),
+                            oldPkg.optString("waybillCode", ""));
+                    if (bc.length() > 0 && !newBillCodes.contains(bc)) {
+                        currentPackages.add(oldPkg);
+                    }
+                }
+            }
+        }
+        // 自动刷新 + 显示已出库：旧列表中的"待取件"在 pendingOnly 响应中消失 → 多半刚出库。
+        // 按单号补查最新状态并用新数据原位替换，保证卡片不消失，状态/边框/图片实时更新为已出库。
+        if (isAuto && sd && autoFreshBillCodes != null) {
+            refreshMissingPendingAfterAutoRefresh(oldPackages, autoFreshBillCodes);
         }
         long _parseFilterCost = System.currentTimeMillis() - _tParseStart;
 
@@ -945,6 +1120,14 @@ public class QueryFragment extends Fragment {
                 startAutoRefreshLoop();
             } else {
                 stopAutoRefresh();
+                // 自动刷新后没有待取件了：自动清空输入框。
+                // 仅自动刷新场景生效，且输入框内容仍是本次查询值时才清（避免打断用户正在输入的新内容）。
+                if (isAuto && etBillCode != null) {
+                    String cur = etBillCode.getText().toString().trim();
+                    if (cur.length() > 0 && cur.equals(lastQueriedBillCode)) {
+                        etBillCode.setText("");
+                    }
+                }
             }
         } else {
             stopAutoRefresh();
@@ -976,8 +1159,125 @@ public class QueryFragment extends Fragment {
     private void fetchPackages() {
         if (etBillCode == null) return;
         String bc = etBillCode.getText().toString().trim();
+        if (bc.isEmpty()) {
+            // 输入框已清空：按最后一次查询条件刷新，保证"显示已出库"开关切换等操作仍然生效
+            bc = lastQueriedBillCode;
+        }
         if (bc.isEmpty()) return;
-        performQuery(false);
+        performQuery(false, false, bc);
+    }
+
+    /**
+     * 自动刷新后，补查在 pendingOnly 响应（基线）中消失的旧"待取件"单号（可能刚出库）。
+     * 最多同时补查 5 个，防止异常数据导致请求堆积。
+     *
+     * @param freshBillCodes 本次 pendingOnly 响应中出现的单号集合（未包含被保留的旧卡片）
+     */
+    private void refreshMissingPendingAfterAutoRefresh(List<JSONObject> oldPackages, java.util.Set<String> freshBillCodes) {
+        if (oldPackages == null || oldPackages.isEmpty() || freshBillCodes == null || !isViewReady) return;
+        try {
+            int fetchCount = 0;
+            for (JSONObject oldPkg : oldPackages) {
+                if (fetchCount >= 5) break;
+                if ("delivered".equals(oldPkg.optString("status", ""))) continue;
+                String bc = firstNonEmpty(oldPkg.optString("billCode", ""),
+                        oldPkg.optString("trackingNumber", ""),
+                        oldPkg.optString("waybillCode", ""));
+                if (bc.length() > 0 && !freshBillCodes.contains(bc)) {
+                    fetchCount++;
+                    fetchFreshPackageByBillCode(bc, oldPkg);
+                }
+            }
+        } catch (Throwable ignore) {}
+    }
+
+    /** 按单号补查包裹最新状态（服务器模式走 /api/query，直连模式走 ZTO 接口），与"运单号"查询链路一致。 */
+    private void fetchFreshPackageByBillCode(final String billCode, final JSONObject oldPkg) {
+        try {
+            if (serverConnectEnabled && apiService != null) {
+                JSONObject body = new JSONObject();
+                body.put("billCode", billCode);
+                body.put("type", "billCode");
+                body.put("showDelivered", true);
+                apiService.queryPackageRaw(body, new ApiService.ApiCallback() {
+                    @Override
+                    public void onSuccess(JSONObject response) {
+                        if (!isViewReady) return;
+                        mainHandler.post(() -> applyFreshPackage(billCode, oldPkg,
+                                extractFirstPackageFromQueryResponse(response)));
+                    }
+                    @Override
+                    public void onError(String error) {}
+                });
+            } else if (directApiClient != null) {
+                new Thread(() -> {
+                    JSONObject fresh = null;
+                    try {
+                        fresh = extractFirstPackageFromQueryResponse(directApiClient.queryPackages(billCode, "billCode"));
+                    } catch (Throwable ignore) {}
+                    if (!isViewReady) return;
+                    final JSONObject finalFresh = fresh;
+                    try {
+                        mainHandler.post(() -> applyFreshPackage(billCode, oldPkg, finalFresh));
+                    } catch (Throwable ignore) {}
+                }, "fresh-pkg").start();
+            }
+        } catch (Throwable ignore) {}
+    }
+
+    /** 从按单号查询响应中提取第一个包裹对象（兼容 data[] 数组或单个对象）。 */
+    private JSONObject extractFirstPackageFromQueryResponse(JSONObject response) {
+        if (response == null) return null;
+        try {
+            if (response.has("data") && !response.isNull("data")) {
+                Object d = response.get("data");
+                if (d instanceof JSONArray) {
+                    JSONArray arr = (JSONArray) d;
+                    if (arr.length() > 0) return arr.optJSONObject(0);
+                } else if (d instanceof JSONObject) {
+                    return (JSONObject) d;
+                }
+            }
+        } catch (Throwable ignore) {}
+        return null;
+    }
+
+    /** 用补查到的最新包裹数据替换列表中的旧条目（已出库则显示新状态/新图片），并触发差分重绘。 */
+    private void applyFreshPackage(String billCode, JSONObject oldPkg, JSONObject fresh) {
+        if (!isViewReady || fresh == null) return;
+        try {
+            if (fresh.length() == 0) return; // 查询不到：保持现状，不主动删除卡片
+            Log.d(TAG, "补查单号=" + billCode + " 旧状态=" + oldPkg.optString("status", "")
+                    + " 新状态=" + fresh.optString("status", "") + " 新图=" + fresh.optString("imageUrl", ""));
+            try {
+                LogRecorder.info(requireContext(), "Query", "出库状态补查",
+                        "billCode=" + billCode + " old=" + oldPkg.optString("status", "")
+                                + " new=" + fresh.optString("status", ""));
+            } catch (Exception ignore) {}
+            int idx = -1;
+            for (int i = 0; i < currentPackages.size(); i++) {
+                String bc = firstNonEmpty(currentPackages.get(i).optString("billCode", ""),
+                        currentPackages.get(i).optString("trackingNumber", ""),
+                        currentPackages.get(i).optString("waybillCode", ""));
+                if (billCode.equals(bc)) { idx = i; break; }
+            }
+            boolean replaced = false;
+            if (idx >= 0) {
+                currentPackages.set(idx, fresh);
+                replaced = true;
+            } else if ("delivered".equals(fresh.optString("status", ""))) {
+                // 卡片已从列表消失：以已出库状态补回
+                currentPackages.add(fresh);
+                replaced = true;
+            }
+            if (replaced) {
+                // 保持差分渲染模式（避免整批重建造成闪烁/跳动）
+                boolean wasAuto = isAutoRefresh;
+                isAutoRefresh = true;
+                renderList();
+                isAutoRefresh = wasAuto;
+            }
+        } catch (Throwable ignore) {}
     }
 
     // ===== Loading =====
@@ -1003,16 +1303,25 @@ public class QueryFragment extends Fragment {
         try {
             Context ctx = getContext();
             if (ctx == null) return 2;
-            android.util.DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
-            int pagePadPx = ctx.getResources().getDimensionPixelSize(R.dimen.pad_page_h);
-            int cardMinW = ctx.getResources().getDimensionPixelSize(R.dimen.grid_card_min_width);
-            int gap = ctx.getResources().getDimensionPixelSize(R.dimen.grid_gap);
-            int availW = dm.widthPixels - pagePadPx * 2;
-            // 尝试 1..4
+            android.content.res.Resources res = ctx.getResources();
+            int baseMinW = res.getDimensionPixelSize(R.dimen.grid_card_min_width);
+            int gap = res.getDimensionPixelSize(R.dimen.grid_gap);
+            // 优先用列表容器的实际宽度（旋转后布局已更新），避免 DisplayMetrics 旧值导致列数不刷新
+            int availW;
+            if (resultsContainer != null && resultsContainer.getWidth() > 0) {
+                availW = resultsContainer.getWidth();
+            } else {
+                android.util.DisplayMetrics dm = res.getDisplayMetrics();
+                int pagePadPx = res.getDimensionPixelSize(R.dimen.pad_page_h);
+                availW = dm.widthPixels - pagePadPx * 2;
+            }
+            // 按可用宽度自适应：能放下几列就显示几列（上限 8，横屏/平板显示更多列）
+            int maxCols = Math.max(1, (availW + gap) / (baseMinW + gap));
+            maxCols = Math.min(maxCols, 8);
             int best = 1;
-            for (int n = 2; n <= 4; n++) {
+            for (int n = 2; n <= maxCols; n++) {
                 int per = (availW - gap * (n - 1)) / n;
-                if (per >= cardMinW) best = n;
+                if (per >= baseMinW) best = n;
                 else break;
             }
             return best;
@@ -1028,12 +1337,13 @@ public class QueryFragment extends Fragment {
             tvNoResults.setVisibility(View.GONE);
 
             int count = currentPackages.size();
-            tvResultCount.setText(count + " 个包裹");
+            updateResultCount(currentPackages);
 
             if (count == 0) {
                 tvNoResults.setVisibility(View.VISIBLE);
                 resultsContainer.removeAllViews();
                 synchronized (allImageUrls) { allImageUrls.clear(); allTrackingNos.clear(); }
+                stopAllTimeoutBlink();
                 return;
             }
 
@@ -1052,8 +1362,19 @@ public class QueryFragment extends Fragment {
                             item.optString("picture", ""),
                             item.optString("pic", ""),
                             item.optString("photo", ""));
-                    if (iurl.length() == 0) continue;
-                    String resolved = (apiService != null) ? apiService.resolveImageUrl(iurl) : iurl;
+                    String resolved = "";
+                    if (iurl.length() > 0) {
+                        resolved = (apiService != null) ? apiService.resolveImageUrl(iurl) : iurl;
+                    } else if (tno.length() > 0) {
+                        // 直连模式懒加载：用已解析成功的 URL 补充预览列表（尚未滚动到的卡片暂不在其中）
+                        String rawPath = firstNonEmpty(
+                                item.optString("rawImgPath", ""),
+                                item.optString("fileImgPath", ""),
+                                item.optString("inSignImg", ""),
+                                item.optString("imgName", ""));
+                        String cached = resolvedImageUrls.get(imgUrlKey(tno, rawPath));
+                        if (cached != null) resolved = cached;
+                    }
                     if (resolved == null || resolved.length() == 0) continue;
                     allImageUrls.add(resolved);
                     allTrackingNos.add(tno);
@@ -1079,13 +1400,17 @@ public class QueryFragment extends Fragment {
 
                 // 重建前记录当前可视区域顶部第一个包裹的单号，用于重建后恢复滚动位置
                 String anchorBillCode = null;
+                final int[] anchorOffsetHolder = {0}; // 锚点行顶到视口顶的距离，恢复时保持同一视口偏移
+                final boolean[] structuralChanged = {false}; // 差分是否实际改动过列表结构（没改动则无需恢复滚动）
                 if (scrollView != null && resultsContainer.getChildCount() > 0) {
                     int scrollY = scrollView.getScrollY();
+                    int contentTop = resultsContainer.getTop(); // 列表容器在滚动内容中的绝对位置
                     for (int ci = 0; ci < resultsContainer.getChildCount(); ci++) {
                         View child = resultsContainer.getChildAt(ci);
-                        int childBottom = child.getBottom();
+                        int childAbsBottom = child.getBottom() + contentTop;
                         // 找到第一个至少部分可见的行/卡片
-                        if (childBottom > scrollY) {
+                        if (childAbsBottom > scrollY) {
+                            anchorOffsetHolder[0] = scrollY - (child.getTop() + contentTop);
                             if (child instanceof LinearLayout && ((LinearLayout) child).getOrientation() == LinearLayout.HORIZONTAL) {
                                 // 网格行：取该行第一个卡片的单号
                                 LinearLayout row = (LinearLayout) child;
@@ -1145,6 +1470,9 @@ public class QueryFragment extends Fragment {
                                 View card = oldRow.getChildAt(j);
                                 Object tag = card.getTag(R.id.btn_query);
                                 if (tag == null || !rowIds.get(j).equals(tag.toString())) { same = false; break; }
+                                // 内容变化（如 待取件→已出库）也视为需要重建，否则状态/边框/时间不会更新
+                                JSONObject newItem = itemMap.get(rowIds.get(j));
+                                if (newItem == null || !isCardContentSame(card, newItem)) { same = false; break; }
                             }
                         }
                         keepRows[ri] = same;
@@ -1152,6 +1480,7 @@ public class QueryFragment extends Fragment {
                     for (int ri = 0; ri < newRowCount; ri++) {
                         List<String> rowIds = newRowIds.get(ri);
                         if (ri < oldRows.size() && keepRows[ri]) continue; // 内容一致，完全不动（零闪烁）
+                        structuralChanged[0] = true; // 该行被重建 → 列表结构有变化
                         LinearLayout targetRow;
                         if (ri < oldRows.size()) {
                             targetRow = oldRows.get(ri);
@@ -1181,6 +1510,13 @@ public class QueryFragment extends Fragment {
                                     }
                                 }
                             }
+                            // 内容已变化（状态变化等）：丢弃旧视图，用新数据重建卡片
+                            if (card != null) {
+                                JSONObject newItem = itemMap.get(rowIds.get(j));
+                                if (newItem != null && !isCardContentSame(card, newItem)) {
+                                    card = null;
+                                }
+                            }
                             if (card == null) {
                                 JSONObject item = itemMap.get(rowIds.get(j));
                                 card = (item != null) ? createPackageCardView(item, true, spanCount) : null;
@@ -1197,20 +1533,25 @@ public class QueryFragment extends Fragment {
                     // 删除多余的旧行（从末尾开始移除）
                     for (int ri = oldRows.size() - 1; ri >= newRowCount; ri--) {
                         resultsContainer.removeView(oldRows.get(ri));
+                        structuralChanged[0] = true;
                     }
                 } else {
                     // ===== 列表模式：清空后重建 =====
                     // 先收集需要保留的卡片（清空后再加回），避免整批重建闪烁
+                    int oldChildCount = resultsContainer.getChildCount();
                     List<View> survivingCards = new ArrayList<>();
                     for (int i = 0; i < resultsContainer.getChildCount(); i++) {
                         View child = resultsContainer.getChildAt(i);
                         Object tag = child.getTag(R.id.btn_query);
                         String cid = tag != null ? tag.toString() : "";
-                        if (newIds.contains(cid)) {
+                        JSONObject newItem = itemMap.get(cid);
+                        // 仅保留内容未变化的卡片；状态已变化（如 待取件→已出库）的卡片丢弃重建
+                        if (newIds.contains(cid) && newItem != null && isCardContentSame(child, newItem)) {
                             survivingCards.add(child);
                         }
                     }
                     resultsContainer.removeAllViews();
+                    structuralChanged[0] = survivingCards.size() < oldChildCount; // 有卡片被移除
                     // 保留的卡片直接加回，新增的追加
                     java.util.Set<String> keptIds = new java.util.HashSet<>();
                     for (View card : survivingCards) {
@@ -1225,6 +1566,7 @@ public class QueryFragment extends Fragment {
                                 item.optString("waybillCode", ""));
                         if (!keptIds.contains(itemId)) {
                             addPackageCard(item, false);
+                            structuralChanged[0] = true;
                         }
                     }
                 }
@@ -1235,8 +1577,12 @@ public class QueryFragment extends Fragment {
 
                 // 恢复滚动位置：找到锚点单号所在行，滚动到该行顶部
                 final String anchor = anchorBillCode;
-                if (anchor != null && scrollView != null && resultsContainer.getChildCount() > 0) {
+                // 结构未变化时视图原位保留，滚动位置天然不变，跳过恢复以避免任何抖动
+                if (anchor != null && structuralChanged[0] && scrollView != null && resultsContainer.getChildCount() > 0) {
                     scrollView.post(() -> {
+                        // 用户刚操作过列表（1秒内）：跳过滚动恢复，避免快速下滑后列表自动跳动
+                        if (System.currentTimeMillis() - lastUserScrollAt < 1000) return;
+                        int contentTop = resultsContainer.getTop();
                         int targetY = -1;
                         for (int ci = 0; ci < resultsContainer.getChildCount(); ci++) {
                             View child = resultsContainer.getChildAt(ci);
@@ -1252,7 +1598,8 @@ public class QueryFragment extends Fragment {
                             }
                             // 找到包含锚单号的行（或锚单号之后最近的）
                             if (rowAnchor != null && rowAnchor.equals(anchor)) {
-                                targetY = child.getTop();
+                                // 保持重建前的视口内偏移，而不是对齐到行顶（否则列表会整体上移）
+                                targetY = contentTop + child.getTop() + anchorOffsetHolder[0];
                                 break;
                             }
                         }
@@ -1325,6 +1672,8 @@ public class QueryFragment extends Fragment {
                 }
             } catch (Exception ignore) {}
         }
+        // 清理已不在列表中的超时件闪烁任务
+        pruneTimeoutBlink(currentPackages);
     }
 
     // ===== 自动刷新图片热更新 =====
@@ -1362,19 +1711,37 @@ public class QueryFragment extends Fragment {
                     item.optString("picture", ""),
                     item.optString("pic", ""),
                     item.optString("photo", ""));
-            if (imageUrl.length() == 0) return;
-            String newUrl = (apiService != null) ? apiService.resolveImageUrl(imageUrl) : imageUrl;
-            if (newUrl == null || newUrl.length() == 0) return;
+            // 直连模式：原始图片路径（出库换新照片后路径会变化）
+            String rawImgPath = firstNonEmpty(
+                    item.optString("rawImgPath", ""),
+                    item.optString("fileImgPath", ""),
+                    item.optString("inSignImg", ""),
+                    item.optString("imgName", ""));
+            if (imageUrl.length() == 0 && rawImgPath.length() == 0) return;
 
             ImageView iv = findCardImageView(card);
             if (iv == null) return;
+            String tno = tag.toString();
+
+            if (imageUrl.length() == 0) {
+                // 直连模式：仅当原始图片路径变化时才重新解析加载（避免每次刷新重复请求 URL）
+                Object rawTag = card.getTag(R.id.tag_pkg_rawpath);
+                String oldRaw = (rawTag != null) ? rawTag.toString() : "";
+                if (oldRaw.equals(rawImgPath)) return;
+                card.setTag(R.id.tag_pkg_rawpath, rawImgPath);
+                resolveAndLoad(iv, tno, rawImgPath);
+                return;
+            }
+
+            String newUrl = (apiService != null) ? apiService.resolveImageUrl(imageUrl) : imageUrl;
+            if (newUrl == null || newUrl.length() == 0) return;
             Object curTag = iv.getTag(R.id.image_loader_tag);
             String curUrl = (curTag != null) ? curTag.toString() : "";
             if (newUrl.equals(curUrl)) return;
 
             // URL 变化 → 重新加载（内存/磁盘缓存按 URL 校验，旧图自动作废，换到新照片）
-            String tno = tag.toString();
             ImageLoader.with(apiService.getOkHttpClient()).load(newUrl, tno, iv, R.drawable.bg_image_placeholder);
+            if (tno.length() > 0) resolvedImageUrls.put(imgUrlKey(tno, rawImgPath), newUrl);
 
             // 若图片预览正打开且展示的正是该单号 → 同步切换大图
             try {
@@ -1398,6 +1765,153 @@ public class QueryFragment extends Fragment {
             }
         }
         return null;
+    }
+
+    /**
+     * 加载卡片图片：
+     * - 已有完整 URL（服务器模式）：直接解析相对路径并加载；
+     * - 仅有原始图片路径（直连模式）：按需异步解析 URL 后再加载。
+     * 返回当前可用的完整 URL；未解析完成返回空串（解析成功后由回调自行加载）。
+     */
+    private String loadCardImage(ImageView iv, String trackingNumber, String imageUrl, String rawImgPath) {
+        if (iv == null) return "";
+        if (imageUrl.length() > 0 && apiService != null) {
+            String resolved = apiService.resolveImageUrl(imageUrl);
+            ImageLoader.with(apiService.getOkHttpClient()).load(resolved, trackingNumber, iv, R.drawable.bg_image_placeholder);
+            return resolved;
+        }
+        iv.setImageResource(R.drawable.bg_image_placeholder);
+        if (rawImgPath.length() > 0 && trackingNumber.length() > 0 && directApiClient != null) {
+            String cachedUrl = resolvedImageUrls.get(imgUrlKey(trackingNumber, rawImgPath));
+            if (cachedUrl != null && cachedUrl.length() > 0) {
+                // 本会话已解析过相同路径：直接加载，不再重复请求 URL
+                ImageLoader.with(apiService.getOkHttpClient()).load(cachedUrl, trackingNumber, iv, R.drawable.bg_image_placeholder);
+            } else {
+                resolveAndLoad(iv, trackingNumber, rawImgPath);
+            }
+        }
+        return "";
+    }
+
+    /** 图片 URL 缓存键：单号 + 原始图片路径（路径变化=换新照片，旧 URL 不可复用） */
+    private static String imgUrlKey(String billCode, String rawImgPath) {
+        return (billCode == null ? "" : billCode) + "\u0001" + (rawImgPath == null ? "" : rawImgPath);
+    }
+
+    /**
+     * 直连模式：按原始图片路径异步解析 URL 并加载。
+     * 用 "raw:单号:路径" 作为 ImageView 的 URL 标记，防止卡片复用/重建后迟到的回调覆盖错误图片；
+     * 解析成功的 URL 同时记入 resolvedImageUrls，供预览列表重建时补充。
+     */
+    private void resolveAndLoad(final ImageView iv, final String billCode, final String rawImgPath) {
+        if (iv == null || billCode == null || billCode.length() == 0 || rawImgPath == null || rawImgPath.length() == 0) return;
+        final String marker = "raw:" + billCode + ":" + rawImgPath;
+        iv.setTag(R.id.image_loader_tag, marker);
+        try {
+            if (directApiClient == null) return;
+            directApiClient.resolveImageUrl(billCode, rawImgPath, new DirectApiClient.ImageUrlCallback() {
+                @Override
+                public void onUrl(final String url) {
+                    if (!isViewReady) return;
+                    mainHandler.post(() -> {
+                        try {
+                            if (url == null || url.length() == 0) return;
+                            if (iv.getTag(R.id.image_loader_tag) == null) return;
+                            if (!marker.equals(iv.getTag(R.id.image_loader_tag))) return; // 卡片已复用/重建，丢弃迟到结果
+                            if (apiService == null) return;
+                            ImageLoader.with(apiService.getOkHttpClient()).load(url, billCode, iv, R.drawable.bg_image_placeholder);
+                            // 记录已解析 URL：预览列表重建时使用
+                            if (billCode.length() > 0) resolvedImageUrls.put(imgUrlKey(billCode, rawImgPath), url);
+                            synchronized (allImageUrls) {
+                                if (!allImageUrls.contains(url)) {
+                                    allImageUrls.add(url);
+                                    allTrackingNos.add(billCode);
+                                }
+                            }
+                        } catch (Throwable ignore) {}
+                    });
+                }
+
+                @Override
+                public void onError(String error) {
+                    Log.w(TAG, "图片URL解析失败 billCode=" + billCode + " err=" + error);
+                }
+            });
+        } catch (Throwable ignore) {}
+    }
+
+    /** 异步解析"另一张照片"URL（入库照/出库照），结果记入 comparePhotoMap 供预览切换 */
+    private void resolveComparePhoto(final String billCode, final String rawPath, final String name) {
+        if (billCode == null || billCode.isEmpty() || rawPath == null || rawPath.isEmpty()) {
+            comparePhotoMap.remove(billCode);
+            return;
+        }
+        try {
+            if (directApiClient == null) return;
+            directApiClient.resolveImageUrl(billCode, rawPath, new DirectApiClient.ImageUrlCallback() {
+                @Override public void onUrl(final String url) {
+                    if (!isViewReady) return;
+                    mainHandler.post(() -> {
+                        try {
+                            if (url == null || url.length() == 0) {
+                                comparePhotoMap.remove(billCode);
+                                return;
+                            }
+                            comparePhotoMap.put(billCode, new String[]{url, name});
+                        } catch (Throwable ignore) {}
+                    });
+                }
+                @Override public void onError(String error) {
+                    // 对比照片解析失败：保持无对比图
+                    if (!isViewReady) return;
+                    mainHandler.post(() -> comparePhotoMap.remove(billCode));
+                }
+            });
+        } catch (Throwable ignore) {}
+    }
+
+    /** 计算并准备"另一张照片"（出入库对比）：直连模式按原始路径异步解析，服务器模式直接用返回的URL */
+    private void prepareComparePhoto(String trackingNumber, JSONObject item, String displayRaw) {
+        if (trackingNumber == null || trackingNumber.isEmpty() || item == null) return;
+        try {
+            String arrivalRaw = firstNonEmpty(
+                    item.optString("rawImgPathArrival", ""),
+                    item.optString("fileImgPath", ""),
+                    item.optString("imgName", ""));
+            String outboundRaw = firstNonEmpty(
+                    item.optString("rawImgPathOutbound", ""),
+                    item.optString("inSignImg", ""));
+
+            // 服务器模式：服务器已返回 imageUrl（一般为入库照），出库照可能由独立字段给出
+            String serverOutbound = firstNonEmpty(
+                    item.optString("outboundImageUrl", ""),
+                    item.optString("signImageUrl", ""),
+                    item.optString("signedImageUrl", ""),
+                    item.optString("outImgUrl", ""));
+            if (serverOutbound.length() > 0) {
+                String resolved = (apiService != null) ? apiService.resolveImageUrl(serverOutbound) : serverOutbound;
+                if (resolved != null && resolved.length() > 0) {
+                    comparePhotoMap.put(trackingNumber, new String[]{resolved, "出库图片"});
+                }
+                return;
+            }
+
+            // 直连模式：判断当前显示的原始路径是哪一张，另一张作为对比
+            String secondaryRaw = "";
+            String secondaryName = "";
+            if (displayRaw != null && displayRaw.length() > 0 && displayRaw.equals(arrivalRaw)) {
+                secondaryRaw = outboundRaw;
+                secondaryName = "出库图片";
+            } else if (displayRaw != null && displayRaw.length() > 0 && displayRaw.equals(outboundRaw)) {
+                secondaryRaw = arrivalRaw;
+                secondaryName = "入库图片";
+            } else {
+                // 无法判断：取另一个非空路径
+                if (arrivalRaw.length() > 0) { secondaryRaw = arrivalRaw; secondaryName = "入库图片"; }
+                else if (outboundRaw.length() > 0) { secondaryRaw = outboundRaw; secondaryName = "出库图片"; }
+            }
+            resolveComparePhoto(trackingNumber, secondaryRaw, secondaryName);
+        } catch (Throwable ignore) {}
     }
 
     // ===== Lazy Load More =====
@@ -1435,6 +1949,8 @@ public class QueryFragment extends Fragment {
 
     private void loadMoreItems() {
         if (!isViewReady || resultsContainer == null || isLoadingMore) return;
+        // 快速滑动过程中（400ms内）不触发底部加载，等滚动稳定后再加载，避免与惯性滚动相互干扰
+        if (System.currentTimeMillis() - lastUserScrollAt < 400) return;
         // 防抖：距离上次加载不到 300ms 则跳过，避免快速滑动时过度触发
         long now = System.currentTimeMillis();
         if (now - lastLoadMoreAt < 300) return;
@@ -1512,6 +2028,435 @@ public class QueryFragment extends Fragment {
                 : R.drawable.bg_pkg_card);
     }
 
+    /** 打开预览大图并附带"出入库照片对比"列表（与 allImageUrls 顺序一致） */
+    private void showPreviewWithCompare(Context ctx, List<String> urlsCopy, List<String> nosCopy, int idx, OkHttpClient cl) {
+        List<String> cmpUrls = new ArrayList<>();
+        List<String> cmpNames = new ArrayList<>();
+        List<String> primaryNames = new ArrayList<>();
+        for (String no : nosCopy) {
+            String[] c = (no == null) ? null : comparePhotoMap.get(no);
+            if (c != null && c[0] != null && c[0].length() > 0) {
+                cmpUrls.add(c[0]);
+                String cmpName = (c[1] == null || c[1].isEmpty()) ? "对比图片" : c[1];
+                cmpNames.add(cmpName);
+                // 当前显示的照片名称 = 对比照片的反面（入库↔出库）
+                primaryNames.add("出库图片".equals(cmpName) ? "入库图片" : "出库图片");
+            } else {
+                cmpUrls.add("");
+                cmpNames.add("");
+                primaryNames.add("");
+            }
+        }
+        ImagePreviewDialog.show(ctx, urlsCopy, idx, nosCopy, cl, cmpUrls, cmpNames, primaryNames);
+    }
+
+    /** 判断卡片内容是否与新数据一致（当前比较状态；图片 URL 变化由 refreshAllCardImages 热更新） */
+    private boolean isCardContentSame(View card, JSONObject item) {
+        if (card == null || item == null) return false;
+        try {
+            Object t = card.getTag(R.id.tag_pkg_status);
+            String oldStatus = (t == null) ? "" : t.toString();
+            String newStatus = item.optString("status", "pending");
+            return oldStatus.equals(newStatus);
+        } catch (Throwable ignore) {
+            return false;
+        }
+    }
+
+    // ===== 超时件判定与三层标注 =====
+
+    /** 读取设置"标注最近N天的超时件"（1~20，默认3） */
+    private int getTimeoutMarkDays() {
+        try {
+            SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+            int v = prefs.getInt(KEY_TIMEOUT_MARK_DAYS, DEFAULT_TIMEOUT_MARK_DAYS);
+            if (v < 1) v = 1;
+            if (v > 20) v = 20;
+            return v;
+        } catch (Exception e) {
+            return DEFAULT_TIMEOUT_MARK_DAYS;
+        }
+    }
+
+    /** 读取设置"显示超时件标注"总开关（默认开启） */
+    private boolean getTimeoutMarkEnabled() {
+        try {
+            SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+            return prefs.getBoolean(KEY_TIMEOUT_MARK_ENABLED, true);
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    /**
+     * 超时件判定（两个条件全部满足）：
+     * 1) remark == "超时出库"；
+     * 2) 出库时间在"设置标注最近N天"范围内。
+     * remark 为"超时出库"但超出 N 天 → 按普通已出库处理。
+     */
+    private boolean isTimeoutPackage(JSONObject item) {
+        if (item == null) return false;
+        try {
+            if (!getTimeoutMarkEnabled()) return false; // "显示超时件标注"关闭：全部按普通包裹处理
+            if (!"超时出库".equals(item.optString("remark", ""))) return false;
+            String outTime = firstNonEmpty(
+                    item.optString("outboundTime", ""),
+                    item.optString("takeDate", ""),
+                    item.optString("deliveryTime", ""),
+                    item.optString("deliveredTime", ""),
+                    item.optString("outTime", ""),
+                    item.optString("outboundAt", ""));
+            long t = parseTimeMillis(outTime);
+            if (t <= 0) return false;
+            long cutoff = System.currentTimeMillis() - getTimeoutMarkDays() * 24L * 3600 * 1000L;
+            return t >= cutoff;
+        } catch (Throwable ignore) {
+            return false;
+        }
+    }
+
+    /** 解析时间字符串为毫秒；支持 yyyy-MM-dd HH:mm:ss、yyyy-MM-dd、紧凑数字、纯时间戳等。 */
+    private static long parseTimeMillis(String raw) {
+        if (raw == null) return 0;
+        String s = raw.trim();
+        if (s.length() == 0) return 0;
+        try {
+            if (s.matches("\\d{13,}")) return Long.parseLong(s);
+            if (s.matches("\\d{10}")) return Long.parseLong(s) * 1000L;
+            if (s.matches("\\d{14}")) {
+                java.util.Date dt = new java.text.SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).parse(s);
+                return dt == null ? 0 : dt.getTime();
+            }
+            if (s.matches("\\d{8}")) {
+                java.util.Date dt = new java.text.SimpleDateFormat("yyyyMMdd", Locale.getDefault()).parse(s);
+                return dt == null ? 0 : dt.getTime();
+            }
+            String norm = s.replace('T', ' ').replace('/', '-');
+            int plus = norm.indexOf('+');
+            if (plus > 0) norm = norm.substring(0, plus);
+            int zIdx = norm.indexOf('Z');
+            if (zIdx > 0) norm = norm.substring(0, zIdx);
+            norm = norm.trim();
+            String[] patterns = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"};
+            for (String p : patterns) {
+                try {
+                    java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(p, Locale.getDefault());
+                    f.setLenient(false);
+                    java.util.Date dt = f.parse(norm);
+                    if (dt != null) return dt.getTime();
+                } catch (Exception ignore) {}
+            }
+        } catch (Throwable ignore) {}
+        return 0;
+    }
+
+    /** 计算"出库时间距离今天"的天数（按自然日差，同一天为0天） */
+    private static int daysSinceOutbound(String outTime) {
+        long t = parseTimeMillis(outTime);
+        if (t <= 0) return 0;
+        try {
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            long now = cal.getTimeInMillis();
+            cal.setTimeInMillis(t);
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+            cal.set(java.util.Calendar.MINUTE, 0);
+            cal.set(java.util.Calendar.SECOND, 0);
+            cal.set(java.util.Calendar.MILLISECOND, 0);
+            long dayOut = cal.getTimeInMillis();
+            java.util.Calendar calNow = java.util.Calendar.getInstance();
+            calNow.set(java.util.Calendar.HOUR_OF_DAY, 0);
+            calNow.set(java.util.Calendar.MINUTE, 0);
+            calNow.set(java.util.Calendar.SECOND, 0);
+            calNow.set(java.util.Calendar.MILLISECOND, 0);
+            long dayNow = calNow.getTimeInMillis();
+            long days = (dayNow - dayOut) / (24L * 3600 * 1000L);
+            return (int) Math.max(0, days);
+        } catch (Throwable ignore) {
+            return 0;
+        }
+    }
+
+    /** 出库时间外圈"流水灯"标注：黄色流动边框包裹时间 chip。 */
+    private FrameLayout wrapTimeWithFlowBorder(Context ctx, TextView timeChip, LinearLayout.LayoutParams outerLp) {
+        FrameLayout frame = new FrameLayout(ctx);
+        frame.setLayoutParams(outerLp);
+        // 时间 chip 在框内使用"无 margin"的布局参数：
+        // 原 topMargin=6dp 若保留，会把 chip 在框内下推 6dp，导致流水灯相对偏上
+        frame.addView(timeChip, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // 后加 FlowBorderView，按 chip 实际尺寸贴合绘制
+        FlowBorderView flow = new FlowBorderView(ctx);
+        FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        flow.setLayoutParams(fp);
+        frame.addView(flow);
+        return frame;
+    }
+
+    /** 超时件标签外圈"流水灯"标注：与出库时间一致，黄色流动边框包裹标签（不再闪烁） */
+    private FrameLayout wrapTagWithFlowBorder(Context ctx, TextView tag, LinearLayout.LayoutParams outerLp) {
+        FrameLayout frame = new FrameLayout(ctx);
+        frame.setLayoutParams(outerLp);
+        frame.addView(tag, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        FlowBorderView flow = new FlowBorderView(ctx);
+        flow.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        frame.addView(flow);
+        return frame;
+    }
+
+    /** 超时件黄色"超时出库 x天"标签（x=出库时间距离今天的天数，紧挨"已出库"状态文字） */
+    private TextView makeTimeoutTag(Context ctx, android.content.res.Resources res, boolean vertical, int days) {
+        TextView tag = new TextView(ctx);
+        tag.setText("超时出库 " + days + "天");
+        tag.setTextColor(ctx.getResources().getColor(R.color.warning, ctx.getTheme()));
+        tag.setBackgroundResource(R.drawable.bg_status_timeout);
+        tag.setTextSize(14f); // 字号比普通状态标签稍大，突出超时件
+        tag.setTypeface(Typeface.DEFAULT_BOLD);
+        tag.setPadding(res.getDimensionPixelSize(R.dimen.chip_padding_h),
+                res.getDimensionPixelSize(R.dimen.chip_padding_v),
+                res.getDimensionPixelSize(R.dimen.chip_padding_h),
+                res.getDimensionPixelSize(R.dimen.chip_padding_v));
+        return tag;
+    }
+
+    /** 启动超时件卡片黄色边框缓慢闪烁（标签不再闪烁，改用流水灯边框） */
+    private void startTimeoutBlink(final CardView card, final String billCode) {
+        Runnable old = billCode == null ? null : timeoutBlinkMap.remove(billCode);
+        if (old != null) {
+            try { mainHandler.removeCallbacks(old); } catch (Exception ignore) {}
+        }
+        if (card == null) return;
+        final boolean[] on = {true};
+        Runnable blink = new Runnable() {
+            @Override
+            public void run() {
+                if (!isViewReady) return;
+                on[0] = !on[0];
+                try {
+                    card.setBackgroundResource(on[0] ? R.drawable.bg_pkg_card_timeout : R.drawable.bg_pkg_card);
+                } catch (Throwable ignore) {}
+                if (isViewReady) mainHandler.postDelayed(this, 700);
+            }
+        };
+        if (billCode != null) timeoutBlinkMap.put(billCode, blink);
+        mainHandler.post(blink);
+    }
+
+    /** 停止某个单号的闪烁任务 */
+    private void stopTimeoutBlink(String billCode) {
+        if (billCode == null) return;
+        Runnable old = timeoutBlinkMap.remove(billCode);
+        if (old != null) {
+            try { mainHandler.removeCallbacks(old); } catch (Exception ignore) {}
+        }
+    }
+
+    /** 停止全部闪烁任务（页面销毁时调用） */
+    private void stopAllTimeoutBlink() {
+        for (Runnable r : timeoutBlinkMap.values()) {
+            try { mainHandler.removeCallbacks(r); } catch (Exception ignore) {}
+        }
+        timeoutBlinkMap.clear();
+    }
+
+    /** 渲染完成后清理：列表中已不存在的包裹停止闪烁，避免任务残留。 */
+    private void pruneTimeoutBlink(List<JSONObject> packages) {
+        if (timeoutBlinkMap.isEmpty()) return;
+        java.util.Set<String> alive = new java.util.HashSet<>();
+        if (packages != null) {
+            for (JSONObject p : packages) {
+                String bc = firstNonEmpty(p.optString("billCode", ""),
+                        p.optString("trackingNumber", ""),
+                        p.optString("waybillCode", ""));
+                if (bc.length() > 0) alive.add(bc);
+            }
+        }
+        java.util.Iterator<java.util.Map.Entry<String, Runnable>> it = timeoutBlinkMap.entrySet().iterator();
+        while (it.hasNext()) {
+            java.util.Map.Entry<String, Runnable> e = it.next();
+            if (!alive.contains(e.getKey())) {
+                try { mainHandler.removeCallbacks(e.getValue()); } catch (Exception ignore) {}
+                it.remove();
+            }
+        }
+    }
+
+    /**
+     * 结果数框：横向单行显示
+     * "xx 个包裹 · 待取 x（绿色数字） · 超时出库 x（黄色数字）"。
+     * 超时数量跟随设置"显示超时件标注"（关闭时为0）。
+     */
+    private void updateResultCount(List<JSONObject> packages) {
+        if (tvResultCount == null) return;
+        try {
+            Context ctx = getContext();
+            if (ctx == null) return;
+            int total = packages == null ? 0 : packages.size();
+            int pending = 0;
+            int timeout = 0;
+            if (packages != null) {
+                for (JSONObject p : packages) {
+                    if ("pending".equals(p.optString("status", ""))) pending++;
+                    else if (isTimeoutPackage(p)) timeout++;
+                }
+            }
+            int muted = getResources().getColor(R.color.muted, ctx.getTheme());
+            int success = getResources().getColor(R.color.success, ctx.getTheme());
+            int warning = getResources().getColor(R.color.warning, ctx.getTheme());
+
+            SpannableStringBuilder sb = new SpannableStringBuilder();
+            sb.append(total + " 个包裹 · 待取 ");
+            int n1 = sb.length();
+            sb.append(String.valueOf(pending));
+            sb.append(" · 超时出库 ");
+            int n2 = sb.length();
+            sb.append(String.valueOf(timeout));
+            // 整段默认 muted 色，两个数字分别上绿色/黄色
+            sb.setSpan(new ForegroundColorSpan(muted), 0, sb.length(),
+                    SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.setSpan(new ForegroundColorSpan(success), n1, n1 + String.valueOf(pending).length(),
+                    SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.setSpan(new ForegroundColorSpan(warning), n2, n2 + String.valueOf(timeout).length(),
+                    SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE);
+            tvResultCount.setText(sb);
+        } catch (Throwable ignore) {}
+    }
+
+    // ===== 查询历史（点击输入框展开最近查询） =====
+
+    private List<JSONObject> loadQueryHistory() {
+        List<JSONObject> list = new ArrayList<>();
+        try {
+            SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+            String raw = prefs.getString(PREFS_HISTORY, "");
+            if (raw != null && raw.length() > 0) {
+                JSONArray arr = new JSONArray(raw);
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject o = arr.optJSONObject(i);
+                    if (o != null) list.add(o);
+                }
+            }
+        } catch (Throwable ignore) {}
+        return list;
+    }
+
+    private void saveQueryHistory(List<JSONObject> list) {
+        try {
+            JSONArray arr = new JSONArray();
+            for (JSONObject o : list) arr.put(o);
+            requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE)
+                    .edit().putString(PREFS_HISTORY, arr.toString()).apply();
+        } catch (Throwable ignore) {}
+    }
+
+    /** 记录一条查询历史：相同"值+类型"去重并移到最前，超出上限裁剪 */
+    private void recordQueryHistory(String value, String type) {
+        if (value == null || value.isEmpty()) return;
+        try {
+            List<JSONObject> list = loadQueryHistory();
+            list.removeIf(o -> value.equals(o.optString("v", "")) && type.equals(o.optString("t", "")));
+            JSONObject o = new JSONObject();
+            o.put("v", value);
+            o.put("t", type);
+            list.add(0, o);
+            while (list.size() > MAX_HISTORY) list.remove(list.size() - 1);
+            saveQueryHistory(list);
+        } catch (Throwable ignore) {}
+    }
+
+    /** 渲染最近查询面板：点击记录自动回填输入框、选中对应类型并自动查询 */
+    private void renderHistory() {
+        if (historyPanel == null) return;
+        historyPanel.removeAllViews();
+        List<JSONObject> list = loadQueryHistory();
+        if (list.isEmpty()) {
+            historyPanel.setVisibility(View.GONE);
+            return;
+        }
+        historyPanel.setVisibility(View.VISIBLE);
+        Context ctx = getContext();
+        if (ctx == null) return;
+        try {
+            android.content.res.Resources res = ctx.getResources();
+            int ink2 = getResources().getColor(R.color.ink2, ctx.getTheme());
+            int muted = getResources().getColor(R.color.muted, ctx.getTheme());
+            int padH = res.getDimensionPixelSize(R.dimen.spacing_lg);
+            int padV = res.getDimensionPixelSize(R.dimen.spacing_lg);
+
+            // 面板标题
+            TextView header = new TextView(ctx);
+            header.setText("最近查询");
+            header.setTextColor(muted);
+            header.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.txt_sm));
+            header.setTypeface(Typeface.DEFAULT_BOLD);
+            header.setPadding(padH, padV, padH, padV);
+            historyPanel.addView(header);
+
+            // 横向滚动容器：每条记录一个圆角轮廓 chip
+            HorizontalScrollView hsv = new HorizontalScrollView(ctx);
+            hsv.setHorizontalScrollBarEnabled(false);
+            LinearLayout chipRow = new LinearLayout(ctx);
+            chipRow.setOrientation(LinearLayout.HORIZONTAL);
+            chipRow.setGravity(Gravity.CENTER_VERTICAL);
+            hsv.addView(chipRow);
+            historyPanel.addView(hsv, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            int chipPadH = res.getDimensionPixelSize(R.dimen.spacing_lg);
+            int chipPadV = res.getDimensionPixelSize(R.dimen.spacing_sm);
+            int margin = res.getDimensionPixelSize(R.dimen.spacing_md);
+            int strokePx = Math.max(1, res.getDimensionPixelSize(R.dimen.divider_height));
+            int borderColor = getResources().getColor(R.color.hair2, ctx.getTheme());
+
+            int shown = 0;
+            for (JSONObject o : list) {
+                if (shown >= HISTORY_PANEL_MAX_ROWS) break;
+                final String v = o.optString("v", "");
+                final String t = o.optString("t", "");
+                if (v.isEmpty()) continue;
+                String prefix = "phoneTail".equals(t) ? "手机尾号 " : ("pickupCode".equals(t) ? "取件码 " : "运单号 ");
+
+                TextView chip = new TextView(ctx);
+                chip.setText(prefix + v);
+                chip.setTextColor(ink2);
+                chip.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.txt_sm));
+                chip.setSingleLine(true);
+                chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                chip.setMaxWidth(res.getDimensionPixelSize(R.dimen.chip_max_width));
+                // 圆角轮廓
+                android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+                bg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+                bg.setCornerRadius(res.getDimensionPixelSize(R.dimen.radius_md));
+                bg.setColor(0x00000000);
+                bg.setStroke(strokePx, borderColor);
+                chip.setBackground(bg);
+                chip.setPadding(chipPadH, chipPadV, chipPadH, chipPadV);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.rightMargin = margin;
+                chip.setLayoutParams(lp);
+                chip.setClickable(true);
+                chip.setOnClickListener(vv -> {
+                    try {
+                        if (etBillCode != null) etBillCode.setText(v);
+                        setSearchType(t);
+                        hideHistoryPanel();
+                        performQuery(true);
+                    } catch (Throwable ignore) {}
+                });
+                chipRow.addView(chip);
+                shown++;
+            }
+        } catch (Throwable ignore) {}
+    }
+
+    /** 收起查询历史面板 */
+    private void hideHistoryPanel() {
+        if (historyPanel != null) historyPanel.setVisibility(View.GONE);
+    }
+
     private boolean isCardPending(View card) {
         Object t = card.getTag(R.id.tag_pkg_pending);
         return t instanceof Boolean && (Boolean) t;
@@ -1576,6 +2521,12 @@ public class QueryFragment extends Fragment {
                 item.optString("picture", ""),
                 item.optString("pic", ""),
                 item.optString("photo", ""));
+        // 直连模式：查询结果只带原始图片路径，URL 由渲染时按需解析（随滚动分批）
+        String rawImgPath = firstNonEmpty(
+                item.optString("rawImgPath", ""),
+                item.optString("fileImgPath", ""),
+                item.optString("inSignImg", ""),
+                item.optString("imgName", ""));
         String arrivedAt = firstNonEmpty(
                 item.optString("arrivedAt", ""),
                 item.optString("time", ""),
@@ -1592,6 +2543,11 @@ public class QueryFragment extends Fragment {
                 item.optString("outDate", ""),
                 item.optString("pickupTime", ""));
         String status = item.optString("status", "pending");
+        boolean timeout = "delivered".equals(status) && isTimeoutPackage(item);
+        // 普通"已出库"卡片整体稍微调暗，与待取件区分；超时件保持高亮（另有标注效果）
+        if ("delivered".equals(status) && !timeout) {
+            card.setAlpha(0.8f);
+        }
         String mobile = firstNonEmpty(
                 item.optString("receiveManMobile", ""),
                 item.optString("phone", ""));
@@ -1604,6 +2560,7 @@ public class QueryFragment extends Fragment {
         int champagne = ctx.getResources().getColor(R.color.champagne, ctx.getTheme());
 
         card.setTag(R.id.btn_query, trackingNumber);
+        card.setTag(R.id.tag_pkg_rawpath, rawImgPath);
 
         // Root container
         LinearLayout root = new LinearLayout(ctx);
@@ -1636,14 +2593,10 @@ public class QueryFragment extends Fragment {
             imgLp.gravity = Gravity.TOP;
             iv.setLayoutParams(imgLp);
         }
-        final String resolvedImageUrl;
-        if (imageUrl.length() > 0 && apiService != null) {
-            resolvedImageUrl = apiService.resolveImageUrl(imageUrl);
-            ImageLoader.with(apiService.getOkHttpClient()).load(resolvedImageUrl, trackingNumber, iv, R.drawable.bg_image_placeholder);
-        } else {
-            resolvedImageUrl = "";
-            iv.setImageResource(R.drawable.bg_image_placeholder);
-        }
+        // 图片加载：有完整URL（服务器模式）直接加载；只有原始路径（直连模式）按需异步解析后再加载
+        final String resolvedImageUrl = loadCardImage(iv, trackingNumber, imageUrl, rawImgPath);
+        // 出入库照片对比：准备"另一张照片"（入库照/出库照），供预览大图切换
+        prepareComparePhoto(trackingNumber, item, rawImgPath);
         // 点击图片放大预览（点击时读取 ImageView 当前 URL，自动刷新换新照片后预览到的也是最新图）
         iv.setClickable(true);
         iv.setFocusable(true);
@@ -1665,7 +2618,7 @@ public class QueryFragment extends Fragment {
                         urlsCopy = new ArrayList<>(allImageUrls);
                         nosCopy = new ArrayList<>(allTrackingNos);
                     }
-                    ImagePreviewDialog.show(getContext(), urlsCopy, idx, nosCopy, cl);
+                    showPreviewWithCompare(getContext(), urlsCopy, nosCopy, idx, cl);
                 } else if (curUrl != null && curUrl.length() > 0) {
                     ImagePreviewDialog.show(getContext(), curUrl, cl);
                 }
@@ -1689,15 +2642,20 @@ public class QueryFragment extends Fragment {
             info.setLayoutParams(ilp);
         }
 
-        addLabelValueRow(info, "单号", trackingNumber, ink2, champagne, ink, true, dp6, 12, 14, true);
+        // 单号行标签与值的间距单独再缩 2dp（4dp→2dp），其余行保持 4dp
+        int gap2 = (int) (ctx.getResources().getDisplayMetrics().density * 2 + 0.5f);
+        LinearLayout billRow = makeLabelValueRow(ctx, "单号", trackingNumber, ink2, champagne, ink, true, dp6, 14, 16, true);
+        setLabelGap(billRow, gap2);
+        info.addView(billRow);
+        makeValueClickableToCopy(billRow, ctx, "单号", trackingNumber); // 点击单号直接复制
         // 收件人(姓名+手机号)：网格窄卡下强制单行省略号，避免折行撑高卡片导致同行不齐
         StringBuilder who = new StringBuilder(recipient);
         if (mobile.length() > 0) who.append("  ").append(mobile);
-        addLabelValueRow(info, "收件人", who.toString(), ink2, ink, ink, false, dp6, 12, 14, true);
+        addLabelValueRow(info, "收件人", who.toString(), ink2, ink, ink, false, dp6, 14, 16, true);
 
         // 无论 pickUpCode 是否为空都固定显示一行，保证 info 区行数一致
         LinearLayout pickRow = makeLabelValueRow(ctx, "取件码", pickupCode,
-                ink2, accent, ink, false, dp6, 12, 20, true);
+                ink2, accent, ink, false, dp6, 14, 20, true);
         try {
             View val = pickRow.getChildAt(1);
             if (val instanceof TextView) {
@@ -1708,6 +2666,7 @@ public class QueryFragment extends Fragment {
             }
         } catch (Throwable ignore) {}
         info.addView(pickRow);
+        makeValueClickableToCopy(pickRow, ctx, "取件码", pickupCode); // 点击取件码直接复制
 
         // 快递 + 时间：上下两行显示，避免网格模式/小屏时水平排列被截断
         LinearLayout metaWrap = new LinearLayout(ctx);
@@ -1720,7 +2679,7 @@ public class QueryFragment extends Fragment {
         metaWrap.addView(makeMetaChip(ctx, courier.length() > 0 ? courier : "—", muted, ink2, false));
         // 第二行：时间（按状态区分：入库时间 / 出库时间 + 前缀 + 值，允许折行）
         boolean isDelivered = "delivered".equals(status);
-        String timeLabel = isDelivered ? "出库时间：" : "入库时间：";
+        String timeLabel = isDelivered ? "出库 " : "入库 ";
         String rawTime = isDelivered ? (outboundTime.length() > 0 ? outboundTime : arrivedAt) : arrivedAt;
         String timeDisplay = timeLabel + formatDisplayTime(rawTime);
         TextView timeChip = new TextView(ctx);
@@ -1738,7 +2697,12 @@ public class QueryFragment extends Fragment {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         tLp.topMargin = dp6;
         timeChip.setLayoutParams(tLp);
-        metaWrap.addView(timeChip);
+        if (timeout) {
+            // 超时件：出库时间外圈加"流水灯"黄色流动边框（③）
+            metaWrap.addView(wrapTimeWithFlowBorder(ctx, timeChip, tLp));
+        } else {
+            metaWrap.addView(timeChip);
+        }
         info.addView(metaWrap);
 
         // ===== Status tag =====
@@ -1746,6 +2710,7 @@ public class QueryFragment extends Fragment {
         boolean pending = "pending".equals(status);
         // 记录待取状态 + 应用"显示已出库激活时"的绿色边框标识
         card.setTag(R.id.tag_pkg_pending, pending);
+        card.setTag(R.id.tag_pkg_status, status == null ? "" : status);
         applyCardPendingBorder(card, pending);
         statusTag.setText(pending ? "待取件" : ("delivered".equals(status) ? "已出库" : status));
         statusTag.setTextColor(pending ? accent : danger);
@@ -1754,21 +2719,29 @@ public class QueryFragment extends Fragment {
         statusTag.setTypeface(Typeface.DEFAULT_BOLD);
         statusTag.setPadding(res.getDimensionPixelSize(R.dimen.chip_padding_h), res.getDimensionPixelSize(R.dimen.chip_padding_v), res.getDimensionPixelSize(R.dimen.chip_padding_h), res.getDimensionPixelSize(R.dimen.chip_padding_v));
 
-        if (vertical) {
-            LinearLayout.LayoutParams stLp = new LinearLayout.LayoutParams(
+        // 状态区：待取件/已出库文字 + 超时件黄色"超时出库"标签（②）
+        LinearLayout statusBox = new LinearLayout(ctx);
+        statusBox.setOrientation(vertical ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        statusBox.setGravity(vertical ? Gravity.CENTER_HORIZONTAL : Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams stLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        if (vertical) stLp.topMargin = dp10;
+        statusBox.setLayoutParams(stLp);
+        statusBox.addView(statusTag);
+        if (timeout) {
+            TextView timeoutTag = makeTimeoutTag(ctx, res, vertical, daysSinceOutbound(outboundTime));
+            LinearLayout.LayoutParams tagLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            stLp.topMargin = dp10;
-            stLp.gravity = Gravity.CENTER_HORIZONTAL;
-            statusTag.setLayoutParams(stLp);
-            root.addView(info);
-            root.addView(statusTag);
-        } else {
-            LinearLayout.LayoutParams stLp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            stLp.gravity = Gravity.CENTER_VERTICAL;
-            statusTag.setLayoutParams(stLp);
-            root.addView(info);
-            root.addView(statusTag);
+            if (vertical) tagLp.leftMargin = res.getDimensionPixelSize(R.dimen.spacing_sm);
+            else tagLp.topMargin = res.getDimensionPixelSize(R.dimen.spacing_sm);
+            statusBox.addView(wrapTagWithFlowBorder(ctx, timeoutTag, tagLp));
+        }
+        root.addView(info);
+        root.addView(statusBox);
+
+        // 超时件：卡片黄色边框缓慢闪烁（①）
+        if (timeout) {
+            startTimeoutBlink(card, trackingNumber);
         }
 
         return card;
@@ -1809,6 +2782,12 @@ public class QueryFragment extends Fragment {
                     item.optString("picture", ""),
                     item.optString("pic", ""),
                     item.optString("photo", ""));
+            // 直连模式：查询结果只带原始图片路径，URL 由渲染时按需解析（随滚动分批）
+            String rawImgPath = firstNonEmpty(
+                    item.optString("rawImgPath", ""),
+                    item.optString("fileImgPath", ""),
+                    item.optString("inSignImg", ""),
+                    item.optString("imgName", ""));
             String arrivedAt = firstNonEmpty(
                     item.optString("arrivedAt", ""),
                     item.optString("time", ""),
@@ -1825,6 +2804,7 @@ public class QueryFragment extends Fragment {
                     item.optString("outDate", ""),
                     item.optString("pickupTime", ""));
             String status = item.optString("status", "pending");
+            boolean timeout = "delivered".equals(status) && isTimeoutPackage(item);
             String mobile = firstNonEmpty(
                     item.optString("receiveManMobile", ""),
                     item.optString("phone", ""));
@@ -1845,6 +2825,10 @@ public class QueryFragment extends Fragment {
             card.setRadius(res.getDimension(R.dimen.radius_2xl));
             card.setCardElevation(0);
             card.setBackgroundResource(R.drawable.bg_pkg_card);
+            // 普通"已出库"卡片整体稍微调暗，与待取件区分；超时件保持高亮（另有标注效果）
+            if ("delivered".equals(status) && !timeout) {
+                card.setAlpha(0.8f);
+            }
 
             // Root container
             LinearLayout root = new LinearLayout(ctx);
@@ -1872,25 +2856,24 @@ public class QueryFragment extends Fragment {
                 imgLp.gravity = Gravity.TOP;
                 iv.setLayoutParams(imgLp);
             }
-            final String resolvedImageUrl;
-            if (imageUrl.length() > 0 && apiService != null) {
-                resolvedImageUrl = apiService.resolveImageUrl(imageUrl);
-                ImageLoader.with(apiService.getOkHttpClient()).load(resolvedImageUrl, trackingNumber, iv, R.drawable.bg_image_placeholder);
-            } else {
-                resolvedImageUrl = "";
-                iv.setImageResource(R.drawable.bg_image_placeholder);
-            }
+            // 图片加载：有完整URL（服务器模式）直接加载；只有原始路径（直连模式）按需异步解析后再加载
+            final String resolvedImageUrl = loadCardImage(iv, trackingNumber, imageUrl, rawImgPath);
+            // 出入库照片对比：准备"另一张照片"（入库照/出库照），供预览大图切换
+            prepareComparePhoto(trackingNumber, item, rawImgPath);
             // 点击图片放大预览：使用 allImageUrls/allTrackingNos 全量列表，支持跨包裹上下张翻页
             iv.setClickable(true);
             iv.setFocusable(true);
-            final String finalResolvedUrl = resolvedImageUrl;
             iv.setOnClickListener(v -> {
                 try {
                     OkHttpClient cl = apiService != null ? apiService.getOkHttpClient() : null;
+                    // 点击时读取 ImageView 当前 URL（懒加载解析完成后即为真实URL），保证预览到最新图
+                    String curUrl = "";
+                    Object t = iv.getTag(R.id.image_loader_tag);
+                    if (t != null) curUrl = t.toString();
                     int idx = -1;
                     synchronized (allImageUrls) {
-                        if (finalResolvedUrl != null && finalResolvedUrl.length() > 0) {
-                            idx = allImageUrls.indexOf(finalResolvedUrl);
+                        if (curUrl != null && curUrl.length() > 0) {
+                            idx = allImageUrls.indexOf(curUrl);
                         }
                     }
                     if (idx >= 0) {
@@ -1899,9 +2882,9 @@ public class QueryFragment extends Fragment {
                             urlsCopy = new ArrayList<>(allImageUrls);
                             nosCopy = new ArrayList<>(allTrackingNos);
                         }
-                        ImagePreviewDialog.show(getContext(), urlsCopy, idx, nosCopy, cl);
-                    } else {
-                        ImagePreviewDialog.show(getContext(), finalResolvedUrl, cl);
+                        showPreviewWithCompare(getContext(), urlsCopy, nosCopy, idx, cl);
+                    } else if (curUrl != null && curUrl.length() > 0) {
+                        ImagePreviewDialog.show(getContext(), curUrl, cl);
                     }
                 }
                 catch (Throwable ignore) {}
@@ -1923,16 +2906,21 @@ public class QueryFragment extends Fragment {
             }
 
             // Bill code row
-            addLabelValueRow(info, "单号", trackingNumber, ink2, champagne, ink, true, dp6, 12, 14, true);
+            // 单号行标签与值的间距单独再缩 2dp（4dp→2dp），其余行保持 4dp
+            int gap2 = (int) (ctx.getResources().getDisplayMetrics().density * 2 + 0.5f);
+            LinearLayout billRow = makeLabelValueRow(ctx, "单号", trackingNumber, ink2, champagne, ink, true, dp6, 14, 16, true);
+            setLabelGap(billRow, gap2);
+            info.addView(billRow);
+            makeValueClickableToCopy(billRow, ctx, "单号", trackingNumber); // 点击单号直接复制
 
             // Recipient row：网格下单行省略，避免折行导致同行卡片高度不齐
             StringBuilder who = new StringBuilder(recipient);
             if (mobile.length() > 0) who.append("  ").append(mobile);
-            addLabelValueRow(info, "收件人", who.toString(), ink2, ink, ink, false, dp6, 12, 14, true);
+            addLabelValueRow(info, "收件人", who.toString(), ink2, ink, ink, false, dp6, 14, 16, true);
 
             // Pickup code row（vertical 模式强制固定一行，保证信息区高度一致）
             LinearLayout pickRow = makeLabelValueRow(ctx, "取件码", pickupCode,
-                    ink2, accent, ink, false, dp6, 12, 20, true);
+                    ink2, accent, ink, false, dp6, 14, 20, true);
             try {
                 View val = pickRow.getChildAt(1);
                 if (val instanceof TextView) {
@@ -1943,6 +2931,7 @@ public class QueryFragment extends Fragment {
                 }
             } catch (Throwable ignore) {}
             info.addView(pickRow);
+            makeValueClickableToCopy(pickRow, ctx, "取件码", pickupCode); // 点击取件码直接复制
 
             // Meta row: courier(上) + arrivedAt(下) 各自占一行，避免时间被水平排列截断
             LinearLayout metaWrap = new LinearLayout(ctx);
@@ -1954,7 +2943,7 @@ public class QueryFragment extends Fragment {
             metaWrap.addView(makeMetaChip(ctx, courier.length() > 0 ? courier : "—", muted, ink2, false));
             // 时间：delivered 状态下显示"出库时间"（优先取outboundTime，没取到回退arrivedAt），其他显示"入库时间"
             boolean delivered2 = "delivered".equals(status);
-            String timeLabel2 = delivered2 ? "出库时间：" : "入库时间：";
+            String timeLabel2 = delivered2 ? "出库 " : "入库 ";
             String rawTime2 = delivered2 ? (outboundTime.length() > 0 ? outboundTime : arrivedAt) : arrivedAt;
             String timeDisplay2 = timeLabel2 + formatDisplayTime(rawTime2);
             TextView timeChip = new TextView(ctx);
@@ -1971,7 +2960,12 @@ public class QueryFragment extends Fragment {
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             tLp2.topMargin = dp6;
             timeChip.setLayoutParams(tLp2);
-            metaWrap.addView(timeChip);
+            if (timeout) {
+                // 超时件：出库时间外圈加"流水灯"黄色流动边框（③）
+                metaWrap.addView(wrapTimeWithFlowBorder(ctx, timeChip, tLp2));
+            } else {
+                metaWrap.addView(timeChip);
+            }
             info.addView(metaWrap);
 
             // ===== Status tag =====
@@ -1983,34 +2977,39 @@ public class QueryFragment extends Fragment {
             statusTag.setText(pending ? "待取件" : ("delivered".equals(status) ? "已出库" : status));
             statusTag.setTextColor(pending ? accent : danger);
             statusTag.setBackgroundResource(pending ? R.drawable.bg_status_pending : R.drawable.bg_status_delivered);
-            statusTag.setTextSize(12f);
+            statusTag.setTextSize(14f);
             statusTag.setTypeface(Typeface.DEFAULT_BOLD);
             statusTag.setPadding((int) (12 * d + 0.5f), (int) (6 * d + 0.5f), (int) (12 * d + 0.5f), (int) (6 * d + 0.5f));
 
-            if (vertical) {
-                // In vertical mode, status tag goes below info, centered
-                LinearLayout.LayoutParams stLp = new LinearLayout.LayoutParams(
+            // 状态区：待取件/已出库文字 + 超时件黄色"超时出库"标签（②）
+            LinearLayout statusBox = new LinearLayout(ctx);
+            statusBox.setOrientation(vertical ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+            statusBox.setGravity(vertical ? Gravity.CENTER_HORIZONTAL : Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams stLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (vertical) stLp.topMargin = dp10;
+            statusBox.setLayoutParams(stLp);
+            statusBox.addView(statusTag);
+            if (timeout) {
+                TextView timeoutTag = makeTimeoutTag(ctx, res, vertical, daysSinceOutbound(outboundTime));
+                LinearLayout.LayoutParams tagLp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                stLp.topMargin = dp10;
-                stLp.gravity = Gravity.CENTER_HORIZONTAL;
-                statusTag.setLayoutParams(stLp);
-                root.addView(info);
-                root.addView(statusTag);
-            } else {
-                // In horizontal mode, status tag on the right side
-                LinearLayout actions = new LinearLayout(ctx);
-                actions.setOrientation(LinearLayout.VERTICAL);
-                actions.setGravity(Gravity.CENTER_VERTICAL);
-                LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
-                actions.setLayoutParams(alp);
-                actions.addView(statusTag);
-                root.addView(info);
-                root.addView(actions);
+                if (vertical) tagLp.leftMargin = res.getDimensionPixelSize(R.dimen.spacing_sm);
+                else tagLp.topMargin = res.getDimensionPixelSize(R.dimen.spacing_sm);
+                statusBox.addView(wrapTagWithFlowBorder(ctx, timeoutTag, tagLp));
+            }
+            root.addView(info);
+            root.addView(statusBox);
+
+            // 超时件：卡片黄色边框缓慢闪烁（①）
+            if (timeout) {
+                startTimeoutBlink(card, trackingNumber);
             }
 
             // Set tag for differential refresh
             card.setTag(R.id.btn_query, trackingNumber);
+            card.setTag(R.id.tag_pkg_status, status == null ? "" : status);
+            card.setTag(R.id.tag_pkg_rawpath, rawImgPath);
             resultsContainer.addView(card);
         } catch (Exception e) {
             safeToast("创建卡片失败: " + e.getMessage());
@@ -2018,6 +3017,37 @@ public class QueryFragment extends Fragment {
     }
 
     // ===== Label/Value Row Helpers =====
+
+    /** 单独调整某行"标签-值"的间距（用于单号行更紧凑，不影响其他行） */
+    private static void setLabelGap(LinearLayout row, int rightMarginPx) {
+        if (row == null || row.getChildCount() == 0) return;
+        View label = row.getChildAt(0);
+        ViewGroup.LayoutParams lp = label.getLayoutParams();
+        if (lp instanceof LinearLayout.LayoutParams) {
+            ((LinearLayout.LayoutParams) lp).rightMargin = rightMarginPx;
+            label.setLayoutParams(lp);
+        }
+    }
+
+    /** 让某行"值"文字可点击：点击直接复制该值（单号/取件码等），收件人报码时更快 */
+    private static void makeValueClickableToCopy(final LinearLayout row, final Context ctx,
+                                                final String label, final String value) {
+        if (row == null || row.getChildCount() < 2) return;
+        View vv = row.getChildAt(1);
+        if (!(vv instanceof TextView)) return;
+        ((TextView) vv).setClickable(true);
+        ((TextView) vv).setOnClickListener(v -> {
+            if (value == null || value.isEmpty()) return;
+            try {
+                ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("查件助手", value));
+                    Toast.makeText(ctx, "已复制" + label + "：" + value, Toast.LENGTH_SHORT).show();
+                    try { LogRecorder.info(ctx, "QUERY", "复制" + label, value); } catch (Exception ignore) {}
+                }
+            } catch (Throwable ignore) {}
+        });
+    }
 
     private static LinearLayout makeLabelValueRow(Context ctx, String label, String value,
                                                    int labelColor, int valueColor, int fallback,
@@ -2042,8 +3072,8 @@ public class QueryFragment extends Fragment {
         lv.setMinWidth(ctx.getResources().getDimensionPixelSize(R.dimen.grid_label_min_width));
         LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        // 标签与值之间的间隔缩小（12dp→6dp），窄卡片下给值留出更多宽度，减少"显示不全"
-        llp.rightMargin = ctx.getResources().getDimensionPixelSize(R.dimen.spacing_sm);
+        // 标签与值之间的间隔：6dp→4dp，进一步缩小"单号"等标签与值之间的空隙
+        llp.rightMargin = ctx.getResources().getDimensionPixelSize(R.dimen.spacing_xs);
         lv.setLayoutParams(llp);
         row.addView(lv);
 

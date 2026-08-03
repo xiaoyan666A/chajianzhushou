@@ -181,7 +181,20 @@
                 android:text="查询" />
         </LinearLayout>
 
-        <!-- 筛选条：.filter-area（左：结果数；右：竖向排列+显示已出库开关） -->
+        <!-- 查询历史：输入框聚焦时展开，点击某条自动回填输入框、选中对应类型并自动查询 -->
+        <LinearLayout
+            android:id="@+id/history_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:paddingHorizontal="@dimen/spacing_lg"
+            android:paddingVertical="@dimen/spacing_md"
+            android:visibility="gone"
+            android:layout_marginBottom="@dimen/pad_card_v" />
+
+        <!-- 筛选条：结果数 + 竖向排列 + 显示已出库 同一行显示
+             结果数框弹性收缩（单行省略尾部），保证两个开关在窄屏也始终可见 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -189,75 +202,70 @@
             android:gravity="center_vertical"
             android:layout_marginBottom="@dimen/pad_card_v">
 
-            <!-- 结果计数 -->
+            <!-- 结果计数：占满剩余宽度，窄屏时单行省略 -->
             <TextView
                 android:id="@+id/tv_result_count"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:singleLine="true"
+                android:ellipsize="end"
                 android:textColor="@color/muted"
-                android:textSize="@dimen/txt_sm"
+                android:textSize="16sp"
                 android:text="0 个包裹"
                 android:paddingHorizontal="@dimen/card_margin_bottom"
                 android:paddingVertical="@dimen/spacing_xs"
                 android:background="@drawable/bg_btn_back" />
 
-            <!-- 右部分：竖向排列 + 显示已出库 -->
+            <!-- 竖向排列 Toggle -->
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:orientation="horizontal"
-                android:gravity="end|center_vertical">
+                android:gravity="center_vertical"
+                android:layout_marginStart="@dimen/card_margin_bottom">
 
-                <!-- 竖向排列 Toggle -->
-                <LinearLayout
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginEnd="@dimen/pad_card_v">
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_sm"
+                    android:text="竖向排列"
+                    android:layout_marginEnd="@dimen/spacing_sm" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="竖向排列"
-                        android:layout_marginEnd="@dimen/spacing_md" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_grid_view"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumbTint="@color/white_50"
+                    android:trackTint="@color/white_10" />
+            </LinearLayout>
 
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/switch_grid_view"
-                        android:layout_width="wrap_content"
-                        android:layout_height="@dimen/switch_height"
-                        android:minWidth="@dimen/switch_min_width"
-                        android:thumbTint="@color/white_50"
-                        android:trackTint="@color/white_10" />
-                </LinearLayout>
+            <!-- 显示已出库 Toggle -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginStart="@dimen/card_margin_bottom">
 
-                <!-- 显示已出库 Toggle -->
-                <LinearLayout
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_sm"
+                    android:text="显示已出库"
+                    android:layout_marginEnd="@dimen/spacing_sm" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="显示已出库"
-                        android:layout_marginEnd="@dimen/spacing_md" />
-
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/switch_show_delivered"
-                        android:layout_width="wrap_content"
-                        android:layout_height="@dimen/switch_height"
-                        android:minWidth="@dimen/switch_min_width"
-                        android:thumbTint="@color/white_50"
-                        android:trackTint="@color/white_10"
-                        android:checked="true" />
-                </LinearLayout>
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_show_delivered"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumbTint="@color/white_50"
+                    android:trackTint="@color/white_10"
+                    android:checked="true" />
             </LinearLayout>
         </LinearLayout>
 

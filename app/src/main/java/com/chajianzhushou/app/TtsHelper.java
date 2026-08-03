@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
@@ -110,7 +111,9 @@ public class TtsHelper {
                     currentCallback = null;
                     if (cb != null) mainHandler.post(cb::onDone);
                 }
-                @Override public void onError(String utteranceId) {
+                // 基类抽象方法（已弃用，但必须覆盖；标注 @Deprecated 抑制编译警告）
+                @Override @Deprecated
+                public void onError(String utteranceId) {
                     if (!utteranceId.equals(systemUtteranceId)) return;
                     systemUtteranceId = null;
                     final TtsCallback cb = currentCallback;
@@ -343,10 +346,9 @@ public class TtsHelper {
                 params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 0.9f);
                 systemTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, uid);
             } else {
-                java.util.HashMap<String, String> params = new java.util.HashMap<>();
-                params.put(TextToSpeech.Engine.KEY_PARAM_VOLUME, "0.9");
-                params.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, uid);
-                systemTts.speak(text, TextToSpeech.QUEUE_FLUSH, params);
+                Bundle params = new Bundle();
+                params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 0.9f);
+                systemTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, uid);
             }
         } catch (Throwable t) {
             systemUtteranceId = null;

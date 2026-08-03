@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 超时件卡片：黄色边框（配合代码里缓慢闪烁动画，边框闪动/恢复） -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:type="linear" android:angle="112"
+                android:startColor="#6B484A4C" android:centerColor="#80181B1E"
+                android:endColor="#8A080C0E" />
+            <corners android:radius="18dp" />
+            <stroke android:width="2dp" android:color="@color/warning" />
+        </shape>
+    </item>
+</layer-list>

@@ -2,4 +2,6 @@
 <resources>
     <item name="image_loader_tag" type="id" />
     <item name="tag_pkg_pending" type="id" />
+    <item name="tag_pkg_status" type="id" />
+    <item name="tag_pkg_rawpath" type="id" />
 </resources>

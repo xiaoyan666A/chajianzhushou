@@ -124,6 +124,41 @@ public class DirectApiClient {
         }
     }
 
+    // ===== 按需解析图片 URL（懒加载：随列表卡片渲染分批触发） =====
+
+    public interface ImageUrlCallback {
+        /** 解析成功；url 可能为空串 */
+        void onUrl(String url);
+        /** 解析失败 */
+        void onError(String error);
+    }
+
+    /**
+     * 异步解析单个包裹的图片 URL（getEncryptFileUrl）。
+     * 由界面在渲染卡片时按需调用：首屏只解析前一批，往下滑动渲染下一批时再解析下一批，
+     * 不再像以前那样查询后一次性并发请求全部包裹的图片 URL。
+     */
+    public void resolveImageUrl(final String billCode, final String imgPath, final ImageUrlCallback callback) {
+        if (callback == null) return;
+        if (billCode == null || imgPath == null || billCode.length() == 0 || imgPath.length() == 0) {
+            callback.onError("缺少单号或图片路径");
+            return;
+        }
+        new Thread(() -> {
+            try {
+                JSONObject auth = ensureLogin();
+                String url = getEncryptFileUrl(billCode, imgPath, auth);
+                if (url != null && url.length() > 0) {
+                    callback.onUrl(url);
+                } else {
+                    callback.onError("图片URL解析为空");
+                }
+            } catch (Exception e) {
+                callback.onError(e == null ? "图片URL解析异常" : e.getMessage());
+            }
+        }, "img-url-" + Math.abs(billCode.hashCode())).start();
+    }
+
     /** 构建 getEncryptFileUrl 请求对象（不执行），供并发场景复用 */
     private Request buildEncryptFileUrlRequest(String billCode, String fileName, JSONObject auth) throws Exception {
         JSONObject data = new JSONObject();
@@ -528,74 +563,9 @@ public class DirectApiClient {
             allStockInfos = filtered;
         }
 
-        // Phase 1: 收集原始数据 + 计数需要图片的条目
-        int imgCount = 0;
-        for (int i = 0; i < allStockInfos.length(); i++) {
-            JSONObject item = allStockInfos.getJSONObject(i);
-            String bc = firstNonEmpty(
-                    item.optString("billCode", ""),
-                    item.optString("trackingNumber", ""),
-                    item.optString("waybillCode", ""));
-            String ip = firstNonEmpty(
-                    item.optString("fileImgPath", ""),
-                    item.optString("inSignImg", ""),
-                    item.optString("imgName", ""));
-            if (bc.length() > 0 && ip.length() > 0) imgCount++;
-        }
-
-        // Phase 2: 并发获取所有图片 URL（替换原来的串行循环，大幅提速）
-        final String[] imgResults = new String[allStockInfos.length()];
-        if (imgCount > 0) {
-            final CountDownLatch latch = new CountDownLatch(imgCount);
-            final JSONObject authFinal = auth;
-            for (int i = 0; i < allStockInfos.length(); i++) {
-                JSONObject item = allStockInfos.getJSONObject(i);
-                String bc = firstNonEmpty(
-                        item.optString("billCode", ""),
-                        item.optString("trackingNumber", ""),
-                        item.optString("waybillCode", ""));
-                String ip = firstNonEmpty(
-                        item.optString("fileImgPath", ""),
-                        item.optString("inSignImg", ""),
-                        item.optString("imgName", ""));
-                if (bc.length() == 0 || ip.length() == 0) {
-                    imgResults[i] = "";
-                    continue;
-                }
-                final int idx = i;
-                final String billCode = bc;
-                final String imgPath = ip;
-                imgResults[idx] = ""; // 默认空串，避免 latch 超时后为 null 导致图片丢失
-                Request imgReq;
-                try {
-                    imgReq = buildEncryptFileUrlRequest(billCode, imgPath, authFinal);
-                } catch (Exception e) {
-                    imgResults[idx] = "";
-                    latch.countDown();
-                    continue;
-                }
-                client.newCall(imgReq).enqueue(new Callback() {
-                    @Override public void onFailure(Call call, IOException e) {
-                        imgResults[idx] = "";
-                        latch.countDown();
-                    }
-                    @Override public void onResponse(Call call, Response response) throws IOException {
-                        try {
-                            if (response.body() != null) {
-                                JSONObject b = new JSONObject(response.body().string());
-                                imgResults[idx] = (b.optBoolean("status") && !b.isNull("result"))
-                                        ? b.optString("result", "") : "";
-                            } else imgResults[idx] = "";
-                        } catch (Exception e) { imgResults[idx] = ""; }
-                        finally { response.close(); }
-                        latch.countDown();
-                    }
-                });
-            }
-            try { latch.await(20, TimeUnit.SECONDS); } catch (InterruptedException e) { Log.w(TAG, "查询图片并发获取被中断"); }
-        }
-
-        // Phase 3: 组装结果
+        // Phase 3: 组装结果。
+        // 图片 URL 不再在此一次性全部解析，只携带原始图片路径（rawImgPath），
+        // 由界面"渲染到哪张卡片、才解析哪张的 URL"（随滚动批次），避免一次性请求全部图片 URL。
         JSONArray packages = new JSONArray();
         for (int i = 0; i < allStockInfos.length(); i++) {
             JSONObject item = allStockInfos.getJSONObject(i);
@@ -663,9 +633,20 @@ public class DirectApiClient {
             if (leaveType != null && !JSONObject.NULL.equals(leaveType)) {
                 pkg.put("leaveType", leaveType);
             }
-            String imageUrl = (imgResults[i] != null) ? imgResults[i] : "";
-            pkg.put("imageUrl", imageUrl);
-            pkg.put("imgUrl", imageUrl);
+            String rawImgPath = firstNonEmpty(
+                    item.optString("fileImgPath", ""),
+                    item.optString("inSignImg", ""),
+                    item.optString("imgName", ""));
+            // 出入库照片对比：分别暴露入库照(fileImgPath)与出库照/签收照(inSignImg)的原始路径
+            String rawArrival = firstNonEmpty(
+                    item.optString("fileImgPath", ""),
+                    item.optString("imgName", ""));
+            String rawOutbound = item.optString("inSignImg", "");
+            pkg.put("imageUrl", "");
+            pkg.put("imgUrl", "");
+            pkg.put("rawImgPath", rawImgPath);
+            pkg.put("rawImgPathArrival", rawArrival);
+            pkg.put("rawImgPathOutbound", rawOutbound);
             packages.put(pkg);
         }
 
