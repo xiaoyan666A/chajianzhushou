@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg">
+
+    <!-- Fragment 容器 -->
+    <FrameLayout
+        android:id="@+id/fragment_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 右下角浮动按钮区 —— 对齐电脑端：超时设置(最左) → 查件(中间) → 设置(最右) -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:orientation="horizontal"
+        android:paddingEnd="@dimen/spacing_xl"
+        android:paddingBottom="@dimen/spacing_xl">
+
+        <!-- 超时设置按钮 —— 对齐 #timeout-settings-btn (warning橙色, "超"字) -->
+        <LinearLayout
+            android:id="@+id/btn_float_timeout_settings"
+            android:layout_width="@dimen/fab_size"
+            android:layout_height="@dimen/fab_size"
+            android:gravity="center"
+            android:background="@drawable/bg_float_warning"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginEnd="@dimen/card_margin_bottom">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="超"
+                android:textColor="@color/warning"
+                android:textSize="@dimen/fab_text_size"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 查件按钮 —— 对齐 #search-btn-float (accent青色, 48dp圆形, "查"字) -->
+        <LinearLayout
+            android:id="@+id/btn_float_query"
+            android:layout_width="@dimen/fab_size"
+            android:layout_height="@dimen/fab_size"
+            android:gravity="center"
+            android:background="@drawable/bg_float_accent"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginEnd="@dimen/card_margin_bottom">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="查"
+                android:textColor="@color/accent"
+                android:textSize="@dimen/fab_text_size"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 设置按钮 —— 对齐 #settings-btn (accent青色, 48dp圆形, 齿轮SVG→⚙字符) -->
+        <LinearLayout
+            android:id="@+id/btn_float_settings"
+            android:layout_width="@dimen/fab_size"
+            android:layout_height="@dimen/fab_size"
+            android:gravity="center"
+            android:background="@drawable/bg_float_accent"
+            android:clickable="true"
+            android:focusable="true">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚙"
+                android:textColor="@color/accent"
+                android:textSize="26sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

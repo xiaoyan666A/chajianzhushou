@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自动刷新指示器圆环：纯色圆环，颜色由 View backgroundTint 动态控制（空闲 muted 暗色 / 自动刷新 accent 绿色） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="ring"
+    android:innerRadiusRatio="2.6"
+    android:thicknessRatio="4.5"
+    android:useLevel="false">
+    <solid android:color="@color/muted" />
+</shape>

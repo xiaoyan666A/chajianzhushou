@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 超时设置对话框：定时小时选择 -->
+    <string-array name="timeout_hours">
+        <item>关闭</item>
+        <item>00</item>
+        <item>01</item>
+        <item>02</item>
+        <item>03</item>
+        <item>04</item>
+        <item>05</item>
+        <item>06</item>
+        <item>07</item>
+        <item>08</item>
+        <item>09</item>
+        <item>10</item>
+        <item>11</item>
+        <item>12</item>
+        <item>13</item>
+        <item>14</item>
+        <item>15</item>
+        <item>16</item>
+        <item>17</item>
+        <item>18</item>
+        <item>19</item>
+        <item>20</item>
+        <item>21</item>
+        <item>22</item>
+        <item>23</item>
+    </string-array>
+
+    <!-- 超时设置对话框：定时分钟选择 -->
+    <string-array name="timeout_minutes">
+        <item>00</item>
+        <item>15</item>
+        <item>30</item>
+        <item>45</item>
+    </string-array>
+
+    <!-- 超时设置对话框：平时检测间隔 -->
+    <string-array name="timeout_normal_intervals">
+        <item>1分钟</item>
+        <item>3分钟</item>
+        <item>5分钟</item>
+        <item>15分钟</item>
+        <item>30分钟</item>
+        <item>1小时</item>
+        <item>2小时</item>
+        <item>3小时</item>
+        <item>6小时</item>
+    </string-array>
+
+    <!-- 超时设置对话框：临近时刻检测间隔 -->
+    <string-array name="timeout_near_intervals">
+        <item>30秒</item>
+        <item>1分钟</item>
+        <item>2分钟</item>
+        <item>5分钟</item>
+    </string-array>
+
+    <!-- 超时设置对话框：Token刷新间隔 -->
+    <string-array name="timeout_token_intervals">
+        <item>关闭</item>
+        <item>1小时</item>
+        <item>2小时</item>
+        <item>3小时</item>
+        <item>4小时</item>
+        <item>5小时</item>
+        <item>6小时</item>
+        <item>7小时</item>
+        <item>8小时</item>
+        <item>9小时</item>
+        <item>10小时</item>
+    </string-array>
+
+    <!-- 语音识别：自动关闭时间选择 -->
+    <string-array name="auto_close_minutes_options">
+        <item>10 秒</item>
+        <item>15 秒</item>
+        <item>30 秒</item>
+        <item>1 分钟</item>
+        <item>3 分钟</item>
+        <item>5 分钟</item>
+        <item>10 分钟</item>
+        <item>30 分钟</item>
+        <item>永不关闭</item>
+    </string-array>
+
+    <!-- 语音识别：自动刷新间隔选择（查件界面自动刷新列表间隔，1s-10s，关闭=不自动） -->
+    <string-array name="auto_refresh_options">
+        <item>1 秒</item>
+        <item>2 秒</item>
+        <item>3 秒</item>
+        <item>4 秒</item>
+        <item>5 秒</item>
+        <item>6 秒</item>
+        <item>7 秒</item>
+        <item>8 秒</item>
+        <item>9 秒</item>
+        <item>10 秒</item>
+        <item>关闭</item>
+    </string-array>
+
+    <!-- TTS 播报音色 -->
+    <string-array name="tts_voice_options">
+        <item>冰糖（女声·甜）</item>
+        <item>茉莉（女声·柔）</item>
+        <item>苏打（男声）</item>
+        <item>白桦（男声·沉）</item>
+    </string-array>
+
+    <!-- TTS 播报风格 -->
+    <string-array name="tts_style_options">
+        <item>默认</item>
+        <item>温柔</item>
+        <item>活泼</item>
+        <item>严肃</item>
+        <item>干练</item>
+        <item>甜美</item>
+        <item>慵懒</item>
+        <item>俏皮</item>
+        <item>磁性</item>
+        <item>清亮</item>
+    </string-array>
+
+    <!-- 日志级别筛选 -->
+    <string-array name="logs_level_options">
+        <item>所有级别</item>
+        <item>INFO</item>
+        <item>WARN</item>
+        <item>ERROR</item>
+        <item>FATAL</item>
+    </string-array>
+
+    <!-- 日志类别筛选（仅用于默认"全部"，实际动态从DB读取module值） -->
+    <string-array name="logs_module_default">
+        <item>所有类别</item>
+    </string-array>
+</resources>

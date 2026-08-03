@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与电脑端 :root CSS 变量严格对齐 -->
+    <color name="bg">#FF08090B</color>
+    <color name="card_solid">#FF171A1F</color>
+    <color name="ink">#FFE8ECEF</color>
+    <color name="ink2">#FFD2D7DC</color>
+    <color name="muted">#FF9BA4AD</color>
+    <color name="hair">#FF1A1D22</color>
+    <color name="hair2">#FF262A31</color>
+    <color name="accent">#FF00F5D4</color>
+    <color name="danger">#FFFF5364</color>
+    <color name="warning">#FFFFA726</color>
+    <color name="success">#FF81C784</color>
+    <color name="champagne">#FFF6D69A</color>
+
+    <!-- 半透明修饰（对应 accent rgba 透明度变体） -->
+    <color name="accent_06">#0F00F5D4</color>
+    <color name="accent_08">#1400F5D4</color>
+    <color name="accent_10">#1A00F5D4</color>
+    <color name="accent_12">#1F00F5D4</color>
+    <color name="accent_15">#2600F5D4</color>
+    <color name="accent_18">#2E00F5D4</color>
+    <color name="accent_20">#3300F5D4</color>
+    <color name="accent_25">#4000F5D4</color>
+    <color name="accent_28">#4700F5D4</color>
+    <color name="accent_30">#4D00F5D4</color>
+    <color name="accent_35">#5900F5D4</color>
+    <color name="accent_40">#6600F5D4</color>
+    <color name="warning_10">#1AFFA726</color>
+    <color name="warning_12">#1FFFA726</color>
+    <color name="warning_20">#33FFA726</color>
+    <color name="warning_25">#40FFA726</color>
+    <color name="warning_28">#47FFA726</color>
+    <color name="warning_35">#59FFA726</color>
+    <color name="warning_40">#66FFA726</color>
+    <color name="danger_08">#14FF5364</color>
+    <color name="danger_10">#1AFF5364</color>
+    <color name="danger_12">#1FFF5364</color>
+    <color name="danger_15">#26FF5364</color>
+    <color name="danger_20">#33FF5364</color>
+    <color name="danger_25">#40FF5364</color>
+    <color name="success_10">#1A81C784</color>
+    <color name="success_12">#1F81C784</color>
+    <color name="white_02">#05FFFFFF</color>
+    <color name="white_03">#08FFFFFF</color>
+    <color name="white_04">#0AFFFFFF</color>
+    <color name="white_05">#0DFFFFFF</color>
+    <color name="white_06">#0FFFFFFF</color>
+    <color name="white_08">#14FFFFFF</color>
+    <color name="white_10">#1AFFFFFF</color>
+    <color name="white_12">#1FFFFFFF</color>
+    <color name="white_15">#26FFFFFF</color>
+    <color name="white_20">#33FFFFFF</color>
+    <color name="white_30">#4DFFFFFF</color>
+    <color name="white_50">#80FFFFFF</color>
+    <color name="white_78">#C7FFFFFF</color>
+</resources>

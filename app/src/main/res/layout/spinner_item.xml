@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spinner 已选状态（关闭时显示在卡片里的一行文字）
+     显式使用 @color/ink，避免系统 simple_spinner_item 派生色在我们的反色主题里看不清 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/text1"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:singleLine="true"
+    android:textSize="15sp"
+    android:textColor="@color/ink"
+    android:ellipsize="marquee"
+    android:gravity="center_vertical|end"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="10dp" />

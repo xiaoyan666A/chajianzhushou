@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "显示已出库"激活时，待取件包裹卡片的绿色边框标识（2dp 实线 #00C853），其余与默认卡片一致 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:type="linear" android:angle="112"
+                android:startColor="#6B484A4C" android:centerColor="#80181B1E"
+                android:endColor="#8A080C0E" />
+            <corners android:radius="18dp" />
+            <stroke android:width="2dp" android:color="#00C853" />
+        </shape>
+    </item>
+</layer-list>

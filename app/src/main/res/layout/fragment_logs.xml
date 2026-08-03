@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 日志查看页面 —— 对齐电脑端 #logs-page -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg">
+
+    <!-- 顶部栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingLeft="@dimen/pad_page"
+        android:paddingTop="@dimen/spacing_3xl"
+        android:paddingRight="@dimen/pad_page"
+        android:paddingBottom="@dimen/pad_card_v">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="运行日志"
+            android:textColor="@color/ink"
+            android:textSize="@dimen/txt_xl"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_logs_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_header_countdown"
+            android:textColor="@color/accent"
+            android:textSize="@dimen/txt_xs"
+            android:text="共 0 条"
+            android:paddingHorizontal="@dimen/card_margin_bottom"
+            android:paddingVertical="3dp"
+            android:layout_marginEnd="@dimen/card_margin_bottom" />
+
+        <Button
+            android:id="@+id/btn_back_logs"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/input_height_lg"
+            android:minWidth="0dp"
+            android:background="@drawable/bg_btn_back"
+            android:textColor="@color/ink2"
+            android:textSize="@dimen/txt_base"
+            android:text="← 返回"
+            android:paddingHorizontal="@dimen/spacing_xl" />
+    </LinearLayout>
+
+    <!-- 筛选区 —— 日期 + 级别 + 类别 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="@dimen/pad_page"
+        android:paddingRight="@dimen/pad_page"
+        android:paddingBottom="@dimen/spacing_lg">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="@dimen/spacing_md">
+
+            <Spinner
+                android:id="@+id/spinner_logs_date"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/search_box_height"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input"
+                android:paddingHorizontal="@dimen/card_margin_bottom"
+                android:layout_marginEnd="@dimen/spacing_sm" />
+
+            <Spinner
+                android:id="@+id/spinner_logs_level"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/search_box_height"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input"
+                android:paddingHorizontal="@dimen/card_margin_bottom"
+                android:layout_marginEnd="@dimen/spacing_sm" />
+
+            <Spinner
+                android:id="@+id/spinner_logs_module"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/search_box_height"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input"
+                android:paddingHorizontal="@dimen/card_margin_bottom"
+                android:layout_marginEnd="@dimen/spacing_sm" />
+
+            <Button
+                android:id="@+id/btn_logs_delete"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/search_box_height"
+                android:minWidth="0dp"
+                android:paddingHorizontal="@dimen/spacing_lg"
+                android:background="@drawable/bg_btn_warning"
+                android:textColor="@color/warning"
+                android:textSize="@dimen/txt_sm"
+                android:text="删除" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 日志列表 -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="@dimen/pad_page"
+            android:paddingRight="@dimen/pad_page"
+            android:paddingBottom="@dimen/spacing_2xl">
+
+            <!-- 空态 -->
+            <LinearLayout
+                android:id="@+id/logs_empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingVertical="@dimen/pad_page_bottom"
+                android:visibility="visible">
+
+                <TextView
+                    android:layout_width="@dimen/timeout_label_width"
+                    android:layout_height="64dp"
+                    android:text="📄"
+                    android:textSize="@dimen/txt_3xl"
+                    android:gravity="center"
+                    android:alpha="0.5"
+                    android:layout_marginBottom="@dimen/spacing_lg" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="暂无日志"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_sm"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="@dimen/spacing_md" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="当前所选日期没有匹配的日志记录\n请先在设置中开启日志输出"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_base"
+                    android:gravity="center"
+                    android:lineSpacingExtra="4dp" />
+            </LinearLayout>
+
+            <!-- 日志列表容器 -->
+            <LinearLayout
+                android:id="@+id/logs_list_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone" />
+
+            <!-- 加载更多按钮（分页加载，全部日志可查看） -->
+            <Button
+                android:id="@+id/btn_logs_load_more"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/input_height_lg"
+                android:layout_marginTop="@dimen/spacing_lg"
+                android:minWidth="0dp"
+                android:background="@drawable/bg_btn_back"
+                android:textColor="@color/ink2"
+                android:textSize="@dimen/txt_base"
+                android:text="加载更多"
+                android:visibility="gone" />
+
+            <!-- 加载态 -->
+            <ProgressBar
+                android:id="@+id/logs_progress_bar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:visibility="gone"
+                android:indeterminateTint="@color/accent"
+                android:layout_marginTop="40dp" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

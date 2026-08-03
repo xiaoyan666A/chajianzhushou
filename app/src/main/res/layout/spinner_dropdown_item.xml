@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spinner 下拉选项（弹出来的列表项）
+     显式文字色 @color/ink + 背景 @color/card_solid，
+     避免系统 simple_spinner_dropdown_item 在我们的反色约定里"白底白字/黑底黑字"完全看不见 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/text1"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:singleLine="true"
+    android:textSize="15sp"
+    android:textColor="@color/ink"
+    android:ellipsize="marquee"
+    android:gravity="center_vertical"
+    android:background="@color/card_solid"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="12dp" />

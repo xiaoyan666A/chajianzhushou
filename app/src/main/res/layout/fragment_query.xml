@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 查件界面 —— 严格对齐电脑端 #main-page 结构
+     顺序：顶部栏(返回+标题) → 搜索类型按钮组 → 搜索框(放大镜/输入框/语音/清除/查询) → 筛选条(结果数/竖向排列/显示已出库) → 列表/空态/加载
+     外层 FrameLayout 用于叠加全屏 loading 遮罩 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg">
+
+    <ScrollView
+        android:id="@+id/scroll_query"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="@dimen/pad_page_h"
+            android:paddingTop="@dimen/spacing_2xl"
+            android:paddingRight="@dimen/pad_page_h"
+            android:paddingBottom="@dimen/pad_page_bottom">
+
+        <!-- 顶部栏：标题"查件" + 自动刷新指示器（空闲暗色静止，自动刷新时变绿转动） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="@dimen/spacing_lg">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="查件"
+                android:textColor="@color/ink"
+                android:textSize="@dimen/txt_xl"
+                android:textStyle="bold" />
+
+            <!-- 自动刷新提示文字：始终显示，空闲为暗色，自动刷新执行时变亮绿色（位于圆环左侧） -->
+            <TextView
+                android:id="@+id/auto_refresh_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="自动刷新中......"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_lg"
+                android:textStyle="bold"
+                android:visibility="visible"
+                android:layout_marginEnd="@dimen/spacing_lg" />
+
+            <View
+                android:id="@+id/auto_refresh_indicator"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:background="@drawable/bg_auto_refresh_ring"
+                android:alpha="0.35"
+                android:clickable="false"
+                android:focusable="false"
+                android:importantForAccessibility="no" />
+        </LinearLayout>
+
+        <!-- 搜索类型按钮组：.search-types（三个pill按钮） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="@dimen/pad_card_v">
+
+            <Button
+                android:id="@+id/btn_type_phone"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/search_type_btn_height"
+                android:layout_weight="1"
+                android:background="@drawable/bg_search_type_btn"
+                android:padding="0dp"
+                android:text="手机尾号"
+                android:textColor="@color/ink2"
+                android:textSize="@dimen/txt_sm"
+                android:state_selected="true" />
+
+            <Button
+                android:id="@+id/btn_type_pickup"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/search_type_btn_height"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="@dimen/spacing_md"
+                android:background="@drawable/bg_search_type_btn"
+                android:padding="0dp"
+                android:text="取件码"
+                android:textColor="@color/ink2"
+                android:textSize="@dimen/txt_sm" />
+
+            <Button
+                android:id="@+id/btn_type_bill"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/search_type_btn_height"
+                android:layout_weight="1"
+                android:background="@drawable/bg_search_type_btn"
+                android:padding="0dp"
+                android:text="运单号"
+                android:textColor="@color/ink2"
+                android:textSize="@dimen/txt_sm" />
+        </LinearLayout>
+
+        <!-- 搜索框：.search-box（放大镜/输入框/语音/清除/查询） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/search_box_height"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_search_box"
+            android:paddingHorizontal="@dimen/pad_card_h"
+            android:layout_marginBottom="@dimen/pad_card_v">
+
+            <!-- 搜索图标（放大镜unicode） -->
+            <TextView
+                android:id="@+id/tv_search_icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔍"
+                android:textSize="@dimen/txt_xl"
+                android:layout_marginRight="@dimen/card_margin_bottom"
+                android:importantForAccessibility="no" />
+
+            <EditText
+                android:id="@+id/et_bill_code"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@null"
+                android:textColorHint="@color/muted"
+                android:textColor="@color/ink"
+                android:textSize="@dimen/txt_md"
+                android:textCursorDrawable="@null"
+                android:hint="搜索单号、收件人、取件码..."
+                android:singleLine="true"
+                android:imeOptions="actionSearch"
+                android:paddingHorizontal="@dimen/spacing_sm" />
+
+            <!-- 清除按钮（叉叉图标）—— 放在麦克风左边 -->
+            <Button
+                android:id="@+id/btn_clear"
+                android:layout_width="@dimen/btn_height_sm"
+                android:layout_height="@dimen/btn_height_sm"
+                android:minWidth="0dp"
+                android:background="@drawable/bg_btn_back"
+                android:text="✕"
+                android:textSize="@dimen/fab_text_size"
+                android:textColor="@color/muted"
+                android:padding="0dp"
+                android:layout_marginHorizontal="@dimen/spacing_xs" />
+
+            <!-- 语音按钮 -->
+            <Button
+                android:id="@+id/btn_voice"
+                android:layout_width="@dimen/btn_height_sm"
+                android:layout_height="@dimen/btn_height_sm"
+                android:minWidth="0dp"
+                android:background="@drawable/bg_btn_back"
+                android:text="🎤"
+                android:textSize="@dimen/fab_text_size"
+                android:padding="0dp"
+                android:layout_marginHorizontal="@dimen/spacing_xs" />
+
+            <!-- 查询按钮 -->
+            <Button
+                android:id="@+id/btn_query"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/btn_height"
+                android:minWidth="96dp"
+                android:paddingHorizontal="@dimen/pad_card_h"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textColor="@color/accent"
+                android:background="@drawable/bg_btn_accent"
+                android:text="查询" />
+        </LinearLayout>
+
+        <!-- 筛选条：.filter-area（左：结果数；右：竖向排列+显示已出库开关） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="@dimen/pad_card_v">
+
+            <!-- 结果计数 -->
+            <TextView
+                android:id="@+id/tv_result_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:text="0 个包裹"
+                android:paddingHorizontal="@dimen/card_margin_bottom"
+                android:paddingVertical="@dimen/spacing_xs"
+                android:background="@drawable/bg_btn_back" />
+
+            <!-- 右部分：竖向排列 + 显示已出库 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:gravity="end|center_vertical">
+
+                <!-- 竖向排列 Toggle -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/pad_card_v">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="竖向排列"
+                        android:layout_marginEnd="@dimen/spacing_md" />
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switch_grid_view"
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/switch_height"
+                        android:minWidth="@dimen/switch_min_width"
+                        android:thumbTint="@color/white_50"
+                        android:trackTint="@color/white_10" />
+                </LinearLayout>
+
+                <!-- 显示已出库 Toggle -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="显示已出库"
+                        android:layout_marginEnd="@dimen/spacing_md" />
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switch_show_delivered"
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/switch_height"
+                        android:minWidth="@dimen/switch_min_width"
+                        android:thumbTint="@color/white_50"
+                        android:trackTint="@color/white_10"
+                        android:checked="true" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 列表容器：#package-list（包裹卡片动态添加到此容器） -->
+        <LinearLayout
+            android:id="@+id/results_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- 空态：#empty-state -->
+        <LinearLayout
+            android:id="@+id/tv_no_results"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingVertical="@dimen/empty_padding_vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="@dimen/empty_icon_size"
+                android:layout_height="@dimen/empty_icon_size"
+                android:text="📦"
+                android:textSize="@dimen/empty_icon_txt"
+                android:gravity="center"
+                android:alpha="0.5"
+                android:layout_marginBottom="18dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="暂无包裹"
+                android:textColor="@color/ink2"
+                android:textSize="@dimen/txt_base"
+                android:textStyle="bold"
+                android:layout_marginBottom="@dimen/card_margin_bottom" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="当前没有待取的包裹\n试试调整搜索条件或显示已出库包裹"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_base"
+                android:gravity="center"
+                android:lineSpacingExtra="4dp" />
+        </LinearLayout>
+
+        <!-- 加载态：#loading -->
+        <ProgressBar
+            android:id="@+id/progress_bar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone"
+            android:indeterminateTint="@color/accent"
+            android:layout_marginTop="40dp" />
+    </LinearLayout>
+</ScrollView>
+
+    <!-- 全屏Loading遮罩 -->
+    <FrameLayout
+        android:id="@+id/loading_mask"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="32dp"
+            android:paddingVertical="@dimen/spacing_3xl"
+            android:background="@drawable/bg_toast">
+
+            <ProgressBar
+                android:layout_width="@dimen/progress_size"
+                android:layout_height="@dimen/progress_size"
+                android:indeterminateTint="@color/accent"
+                android:layout_marginBottom="@dimen/spacing_lg" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="正在查询包裹..."
+                android:textColor="@color/ink2"
+                android:textSize="@dimen/txt_base" />
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

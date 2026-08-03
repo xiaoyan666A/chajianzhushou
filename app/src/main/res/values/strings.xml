@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">查件助手</string>
+    <string name="nav_query">查询</string>
+    <string name="nav_timeout">超时件</string>
+    <string name="nav_settings">设置</string>
+</resources>

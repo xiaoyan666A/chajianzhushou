@@ -1,0 +1,1484 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置界面 —— 严格对齐电脑端 #settings-page
+     顺序：顶部栏 → 账号信息 → 系统信息 → 语音识别配置 → TTS配置 → 日志输出 → 服务器连接 → 登录按钮 -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="@dimen/pad_page"
+        android:paddingTop="@dimen/spacing_3xl"
+        android:paddingRight="@dimen/pad_page"
+        android:paddingBottom="@dimen/pad_page_bottom">
+
+        <!-- ===== 顶部栏：设置标题 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="@dimen/spacing_3xl">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="设置"
+                android:textColor="@color/ink"
+                android:textSize="@dimen/txt_xl"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- ===== 账号信息卡片 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="账号信息"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tv_avatar"
+                    android:layout_width="@dimen/avatar_size"
+                    android:layout_height="@dimen/avatar_size"
+                    android:gravity="center"
+                    android:text="查"
+                    android:textColor="@color/accent"
+                    android:textSize="@dimen/txt_2xl"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_pkg_image" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginHorizontal="@dimen/pad_card_h">
+
+                    <TextView
+                        android:id="@+id/tv_account_name"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="查件助手"
+                        android:textColor="@color/ink"
+                        android:textSize="@dimen/txt_lg"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="@dimen/spacing_xs" />
+
+                    <TextView
+                        android:id="@+id/tv_account_id"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ID: --"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/tv_account_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_status_pending"
+                    android:paddingHorizontal="@dimen/card_margin_bottom"
+                    android:paddingVertical="@dimen/spacing_xs">
+
+                    <View
+                        android:layout_width="@dimen/spacing_sm"
+                        android:layout_height="@dimen/spacing_sm"
+                        android:background="@drawable/bg_timeout_count" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="@dimen/spacing_sm"
+                        android:text="已连接"
+                        android:textColor="@color/accent"
+                        android:textSize="@dimen/txt_xs"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ===== 系统信息卡片 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="系统信息"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="应用版本" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_base"
+                    android:text="1.5.0" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="快递站点" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_base"
+                    android:text="东大村永顺超市" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="站点编码" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_base"
+                    android:text="TUXI39300384927" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ===== 管理员密码卡片（访问控制，与电脑端统一机制） ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="管理员密码"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="当前密码" />
+
+                <EditText
+                    android:id="@+id/et_admin_cur_pwd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/input_height_lg"
+                    android:minWidth="132dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/spacing_lg"
+                    android:textColor="@color/ink"
+                    android:textColorHint="@color/muted"
+                    android:textSize="@dimen/txt_base"
+                    android:hint="请输入当前密码"
+                    android:singleLine="true"
+                    android:inputType="textPassword" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="新密码" />
+
+                <EditText
+                    android:id="@+id/et_admin_new_pwd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/input_height_lg"
+                    android:minWidth="132dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/spacing_lg"
+                    android:textColor="@color/ink"
+                    android:textColorHint="@color/muted"
+                    android:textSize="@dimen/txt_base"
+                    android:hint="至少4位"
+                    android:singleLine="true"
+                    android:inputType="textPassword" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="确认新密码" />
+
+                <EditText
+                    android:id="@+id/et_admin_confirm_pwd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/input_height_lg"
+                    android:minWidth="132dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/spacing_lg"
+                    android:textColor="@color/ink"
+                    android:textColorHint="@color/muted"
+                    android:textSize="@dimen/txt_base"
+                    android:hint="再次输入新密码"
+                    android:singleLine="true"
+                    android:inputType="textPassword" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btn_save_admin_pwd"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/btn_height_sm"
+                android:layout_marginTop="@dimen/spacing_lg"
+                android:background="@drawable/bg_btn_accent"
+                android:textColor="@color/accent"
+                android:textSize="@dimen/txt_base"
+                android:textStyle="bold"
+                android:text="保存新密码" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:text="默认管理员密码：888888。修改后立即生效（当前验证会话不受影响）。"
+                android:layout_marginTop="@dimen/spacing_md" />
+        </LinearLayout>
+
+        <!-- ===== 界面风格卡片 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="界面风格"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <!-- 三种模式：浅色 / 深色 / 自动 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <!-- 浅色模式 -->
+                <LinearLayout
+                    android:id="@+id/theme_opt_light"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:background="@drawable/bg_theme_option"
+                    android:padding="@dimen/spacing_md"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="64dp"
+                        android:orientation="vertical"
+                        android:background="@drawable/bg_theme_preview_light"
+                        android:padding="5dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+                            <View
+                                android:layout_width="5dp"
+                                android:layout_height="5dp"
+                                android:background="@drawable/bg_theme_dot_light" />
+                            <View
+                                android:layout_width="5dp"
+                                android:layout_height="5dp"
+                                android:layout_marginStart="3dp"
+                                android:background="@drawable/bg_theme_dot_light" />
+                            <View
+                                android:layout_width="5dp"
+                                android:layout_height="5dp"
+                                android:layout_marginStart="3dp"
+                                android:background="@drawable/bg_theme_dot_light" />
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="9dp"
+                            android:layout_marginTop="4dp"
+                            android:background="#FFFFFF" />
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="9dp"
+                            android:layout_marginTop="4dp"
+                            android:background="#FFFFFF" />
+                        <View
+                            android:layout_width="42dp"
+                            android:layout_height="5dp"
+                            android:layout_marginTop="4dp"
+                            android:background="#00A98F" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="浅色模式"
+                        android:layout_marginTop="@dimen/spacing_md" />
+
+                    <androidx.appcompat.widget.AppCompatRadioButton
+                        android:id="@+id/rb_theme_light"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:buttonTint="@color/accent"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <!-- 深色模式 -->
+                <LinearLayout
+                    android:id="@+id/theme_opt_dark"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:background="@drawable/bg_theme_option"
+                    android:padding="@dimen/spacing_md"
+                    android:layout_marginStart="@dimen/spacing_md"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="64dp"
+                        android:orientation="vertical"
+                        android:background="@drawable/bg_theme_preview_dark"
+                        android:padding="5dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+                            <View
+                                android:layout_width="5dp"
+                                android:layout_height="5dp"
+                                android:background="@drawable/bg_theme_dot_dark" />
+                            <View
+                                android:layout_width="5dp"
+                                android:layout_height="5dp"
+                                android:layout_marginStart="3dp"
+                                android:background="@drawable/bg_theme_dot_dark" />
+                            <View
+                                android:layout_width="5dp"
+                                android:layout_height="5dp"
+                                android:layout_marginStart="3dp"
+                                android:background="@drawable/bg_theme_dot_dark" />
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="9dp"
+                            android:layout_marginTop="4dp"
+                            android:background="@color/white_10" />
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="9dp"
+                            android:layout_marginTop="4dp"
+                            android:background="@color/white_10" />
+                        <View
+                            android:layout_width="42dp"
+                            android:layout_height="5dp"
+                            android:layout_marginTop="4dp"
+                            android:background="@color/accent" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="深色模式"
+                        android:layout_marginTop="@dimen/spacing_md" />
+
+                    <androidx.appcompat.widget.AppCompatRadioButton
+                        android:id="@+id/rb_theme_dark"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:buttonTint="@color/accent"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <!-- 自动切换 -->
+                <LinearLayout
+                    android:id="@+id/theme_opt_auto"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:background="@drawable/bg_theme_option"
+                    android:padding="@dimen/spacing_md"
+                    android:layout_marginStart="@dimen/spacing_md"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="64dp"
+                        android:orientation="vertical"
+                        android:background="@drawable/bg_theme_preview_auto"
+                        android:padding="5dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+                            <View
+                                android:layout_width="5dp"
+                                android:layout_height="5dp"
+                                android:background="@drawable/bg_theme_dot_light" />
+                            <View
+                                android:layout_width="5dp"
+                                android:layout_height="5dp"
+                                android:layout_marginStart="3dp"
+                                android:background="@drawable/bg_theme_dot_light" />
+                            <View
+                                android:layout_width="5dp"
+                                android:layout_height="5dp"
+                                android:layout_marginStart="3dp"
+                                android:background="@drawable/bg_theme_dot_dark" />
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="9dp"
+                            android:layout_marginTop="4dp"
+                            android:background="@drawable/bg_theme_card_auto" />
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="9dp"
+                            android:layout_marginTop="4dp"
+                            android:background="@drawable/bg_theme_card_auto" />
+                        <View
+                            android:layout_width="42dp"
+                            android:layout_height="5dp"
+                            android:layout_marginTop="4dp"
+                            android:background="@drawable/bg_theme_accent_auto" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="自动切换"
+                        android:layout_marginTop="@dimen/spacing_md" />
+
+                    <androidx.appcompat.widget.AppCompatRadioButton
+                        android:id="@+id/rb_theme_auto"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:buttonTint="@color/accent"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- 自动模式附加设置：日出/日落时间 + 定位 -->
+            <LinearLayout
+                android:id="@+id/auto_theme_panel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:layout_marginTop="@dimen/spacing_xl">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/divider_height"
+                    android:background="@color/hair"
+                    android:layout_marginBottom="@dimen/spacing_xl" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingVertical="@dimen/spacing_lg">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:text="日出时间" />
+
+                    <EditText
+                        android:id="@+id/et_sunrise_time"
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/input_height_lg"
+                        android:minWidth="96dp"
+                        android:background="@drawable/bg_input"
+                        android:paddingHorizontal="@dimen/spacing_lg"
+                        android:textColor="@color/ink"
+                        android:textSize="@dimen/txt_base"
+                        android:text="06:00"
+                        android:inputType="none"
+                        android:cursorVisible="false"
+                        android:focusable="false"
+                        android:clickable="true" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingVertical="@dimen/spacing_lg">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:text="日落时间" />
+
+                    <EditText
+                        android:id="@+id/et_sunset_time"
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/input_height_lg"
+                        android:minWidth="96dp"
+                        android:background="@drawable/bg_input"
+                        android:paddingHorizontal="@dimen/spacing_lg"
+                        android:textColor="@color/ink"
+                        android:textSize="@dimen/txt_base"
+                        android:text="18:00"
+                        android:inputType="none"
+                        android:cursorVisible="false"
+                        android:focusable="false"
+                        android:clickable="true" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btn_theme_locate"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/btn_height_sm"
+                    android:background="@drawable/bg_btn_accent"
+                    android:textColor="@color/accent"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="自动获取定位计算日出日落" />
+
+                <TextView
+                    android:id="@+id/tv_theme_hint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_xs"
+                    android:lineSpacingExtra="2dp"
+                    android:text="自动模式将根据日出日落时间在浅色与深色之间自动切换。开启定位（需授权位置权限）后可自动计算当地日出日落时间，也可手动修改上方时间点。"
+                    android:layout_marginTop="@dimen/spacing_md" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ===== 语音识别配置卡片 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="语音识别配置"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="语音识别" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="启用语音识别功能"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_asr_enabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="自动关闭时间"
+                    android:layout_marginBottom="2dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_sm"
+                    android:text="识别完成后自动关闭听写"
+                    android:layout_marginBottom="@dimen/spacing_md" />
+
+                <Spinner
+                    android:id="@+id/spinner_auto_close_minutes"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/input_height_lg"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/spacing_lg" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="自动刷新间隔"
+                    android:layout_marginBottom="2dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_sm"
+                    android:text="查询后自动刷新列表，直到没有待出库包裹为止"
+                    android:layout_marginBottom="@dimen/spacing_md" />
+
+                <Spinner
+                    android:id="@+id/spinner_auto_refresh"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/input_height_lg"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/spacing_lg" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <!-- Mimo API Key 配置 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="Mimo API Key"
+                    android:layout_marginBottom="2dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_sm"
+                    android:text="语音识别接口密钥"
+                    android:layout_marginBottom="@dimen/spacing_md" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <EditText
+                        android:id="@+id/et_mimo_api_key"
+                        android:layout_width="0dp"
+                        android:layout_height="@dimen/input_height_lg"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_input"
+                        android:paddingHorizontal="@dimen/spacing_lg"
+                        android:textColor="@color/ink"
+                        android:textColorHint="@color/muted"
+                        android:textSize="@dimen/txt_base"
+                        android:hint="输入Mimo API Key"
+                        android:singleLine="true"
+                        android:inputType="text" />
+
+                    <Button
+                        android:id="@+id/btn_lock_mimo_key"
+                        android:layout_width="@dimen/input_height_lg"
+                        android:layout_height="@dimen/input_height_lg"
+                        android:minWidth="0dp"
+                        android:background="@drawable/bg_btn_back"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_lg"
+                        android:text="🔓"
+                        android:layout_marginStart="@dimen/spacing_md" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ===== TTS 语音播报配置卡片 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="TTS语音播报"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <!-- TTS 总开关 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="TTS播报总开关" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="启用语音播报功能"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_tts_enabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <!-- 播报音色 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="播报音色"
+                    android:layout_marginBottom="@dimen/spacing_md" />
+
+                <Spinner
+                    android:id="@+id/spinner_tts_voice"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/input_height_lg"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/spacing_lg" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <!-- 播报风格 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="播报风格"
+                    android:layout_marginBottom="@dimen/spacing_md" />
+
+                <Spinner
+                    android:id="@+id/spinner_tts_style"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/input_height_lg"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/spacing_lg" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <!-- 自定义风格描述 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="自定义风格描述"
+                    android:layout_marginBottom="2dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_sm"
+                    android:text="留空使用上方预设风格，填写后优先使用自定义描述"
+                    android:layout_marginBottom="@dimen/spacing_md" />
+
+                <EditText
+                    android:id="@+id/et_tts_custom_style"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/input_height_lg"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/spacing_lg"
+                    android:textColor="@color/ink"
+                    android:textColorHint="@color/muted"
+                    android:hint="例如：用明亮活泼的语调播报"
+                    android:textSize="@dimen/txt_base"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <!-- 语速 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="语速 "
+                        android:layout_marginBottom="2dp" />
+
+                    <TextView
+                        android:id="@+id/tv_tts_speed_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/accent"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="1.0" />
+                </LinearLayout>
+
+                <SeekBar
+                    android:id="@+id/seek_tts_speed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="15"
+                    android:progress="5"
+                    android:layout_marginTop="@dimen/spacing_md"
+                    android:thumbTint="@color/accent"
+                    android:progressTint="@color/accent"
+                    android:progressBackgroundTint="@color/hair2" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="2dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_xs"
+                        android:text="0.5 慢速" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_xs"
+                        android:gravity="center"
+                        android:text="1.0 正常" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_xs"
+                        android:gravity="end"
+                        android:text="2.0 极速" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- 保存TTS + 试听按钮 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="@dimen/spacing_md">
+
+                <Button
+                    android:id="@+id/btn_save_tts"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/btn_height_sm"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_accent"
+                    android:textColor="@color/accent"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="保存TTS设置"
+                    android:layout_marginEnd="@dimen/spacing_md" />
+
+                <Button
+                    android:id="@+id/btn_test_tts"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/btn_height_sm"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_back"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="试听"
+                    android:layout_marginStart="@dimen/spacing_md" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ===== 日志输出卡片 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="日志输出"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/card_margin_bottom">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="日志输出总开关" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启后程序按功能分区将日志记录到本地"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_logs_enabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btn_view_logs"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/btn_height_sm"
+                android:layout_marginTop="@dimen/spacing_md"
+                android:background="@drawable/bg_btn_accent"
+                android:textColor="@color/accent"
+                android:textSize="@dimen/txt_base"
+                android:textStyle="bold"
+                android:text="查看日志" />
+
+            <!-- 日志模块独立开关（程序动态生成） -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:text="各模块日志开关（仅总开关开启时生效）"
+                android:layout_marginTop="@dimen/spacing_lg"
+                android:layout_marginBottom="@dimen/spacing_sm" />
+
+            <LinearLayout
+                android:id="@+id/log_module_filter_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical" />
+        </LinearLayout>
+
+        <!-- ===== 服务器连接卡片 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="服务器连接"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <!-- 服务器IP -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/ink2"
+                android:textSize="@dimen/txt_base"
+                android:textStyle="bold"
+                android:text="服务器IP地址"
+                android:layout_marginBottom="@dimen/spacing_md" />
+
+            <EditText
+                android:id="@+id/et_server_ip"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/input_height_lg"
+                android:background="@drawable/bg_input"
+                android:paddingHorizontal="@dimen/spacing_lg"
+                android:textColor="@color/ink"
+                android:textColorHint="@color/muted"
+                android:hint="例如：192.168.1.100:3000"
+                android:textSize="@dimen/txt_md"
+                android:singleLine="true"
+                android:inputType="textUri"
+                android:layout_marginBottom="@dimen/spacing_md" />
+
+            <!-- 连接状态指示 -->
+            <TextView
+                android:id="@+id/tv_connection_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:text="未连接"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <!-- 服务器连接总开关 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_md">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="服务器连接" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启后自动连接电脑端进行同步"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_server_connect"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <!-- 各功能同步子开关 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:text="功能同步开关"
+                android:paddingVertical="@dimen/spacing_md" />
+
+            <!-- 查件界面同步 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_sm">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="查件界面同步" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_sync_query"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+            </LinearLayout>
+
+            <!-- 超时件界面同步 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_sm">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="超时件界面同步" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_sync_timeout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+            </LinearLayout>
+
+            <!-- 设置界面同步 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_sm">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:text="设置界面同步" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_sync_settings"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_md" />
+
+            <!-- 保存IP 按钮 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="@dimen/spacing_xs">
+
+                <Button
+                    android:id="@+id/btn_save_ip"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/btn_height_sm"
+                    android:background="@drawable/bg_btn_accent"
+                    android:textColor="@color/accent"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="保存IP" />
+            </LinearLayout>
+            </LinearLayout>
+
+        <!-- ===== 登录按钮 ===== -->
+        <Button
+            android:id="@+id/btn_login"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/btn_height_lg"
+            android:background="@drawable/bg_btn_accent"
+            android:textColor="@color/accent"
+            android:textSize="@dimen/txt_md"
+            android:textStyle="bold"
+            android:text="重新登录" />
+
+    </LinearLayout>
+</ScrollView>

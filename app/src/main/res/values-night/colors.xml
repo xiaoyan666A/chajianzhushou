@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 浅色主题配色（MODE_NIGHT_YES 时生效，与桌面端 html[data-theme="light"] 严格对齐）
+         注意：本应用"深色=白天资源(values/)、浅色=夜间资源(values-night/)"的映射约定，
+         见 MainActivity 中 AppCompatDelegate.setDefaultNightMode 的调用说明 -->
+    <color name="bg">#FFEEF2F6</color>
+    <color name="card_solid">#FFF2F5F9</color>
+    <color name="ink">#FF16202A</color>
+    <color name="ink2">#FF2E3A46</color>
+    <color name="muted">#FF48555F</color>
+    <color name="hair">#FFDCE2E8</color>
+    <color name="hair2">#FFC7D0D8</color>
+    <color name="accent">#FF00A98F</color>
+    <color name="danger">#FFD9384B</color>
+    <color name="warning">#FFD98A16</color>
+    <color name="success">#FF3E9B4F</color>
+    <color name="champagne">#FF8A6D2F</color>
+
+    <!-- 半透明修饰（accent 浅色变体，透明度与暗色保持一致） -->
+    <color name="accent_06">#0F00A98F</color>
+    <color name="accent_08">#1400A98F</color>
+    <color name="accent_10">#1A00A98F</color>
+    <color name="accent_12">#1F00A98F</color>
+    <color name="accent_15">#2600A98F</color>
+    <color name="accent_18">#2E00A98F</color>
+    <color name="accent_20">#3300A98F</color>
+    <color name="accent_25">#4000A98F</color>
+    <color name="accent_28">#4700A98F</color>
+    <color name="accent_30">#4D00A98F</color>
+    <color name="accent_35">#5900A98F</color>
+    <color name="accent_40">#6600A98F</color>
+    <color name="warning_10">#1AD98A16</color>
+    <color name="warning_12">#1FD98A16</color>
+    <color name="warning_20">#33D98A16</color>
+    <color name="warning_25">#40D98A16</color>
+    <color name="warning_28">#47D98A16</color>
+    <color name="warning_35">#59D98A16</color>
+    <color name="warning_40">#66D98A16</color>
+    <color name="danger_08">#14D9384B</color>
+    <color name="danger_10">#1AD9384B</color>
+    <color name="danger_12">#1FD9384B</color>
+    <color name="danger_15">#26D9384B</color>
+    <color name="danger_20">#33D9384B</color>
+    <color name="danger_25">#40D9384B</color>
+    <color name="success_10">#1A3E9B4F</color>
+    <color name="success_12">#1F3E9B4F</color>
+
+    <!-- white_* 在浅色主题下映射为深色半透明（对应桌面端 rgba(15,23,32,xx)） -->
+    <color name="white_02">#080F1720</color>
+    <color name="white_03">#0F0F1720</color>
+    <color name="white_04">#0B0F1720</color>
+    <color name="white_05">#0D0F1720</color>
+    <color name="white_06">#0F0F1720</color>
+    <color name="white_08">#140F1720</color>
+    <color name="white_10">#1A0F1720</color>
+    <color name="white_12">#1F0F1720</color>
+    <color name="white_15">#260F1720</color>
+    <color name="white_20">#330F1720</color>
+    <color name="white_30">#4D0F1720</color>
+    <color name="white_50">#800F1720</color>
+    <color name="white_78">#C70F1720</color>
+</resources>

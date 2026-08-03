@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 超时出库界面 —— 严格对齐电脑端 #timeout-page
+     顺序：顶部标题栏(超时出库/倒计时/数量/刷新) → 列表 → 空态 → 加载 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="@dimen/pad_page"
+            android:paddingTop="@dimen/spacing_3xl"
+            android:paddingRight="@dimen/pad_page"
+            android:paddingBottom="@dimen/pad_page_bottom">
+
+            <!-- 顶部标题栏：.timeout-header（标题 + 倒计时 + 数量胶囊 + 刷新按钮） -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="@dimen/spacing_2xl">
+
+                <!-- 左侧：标题 + 倒计时Badge -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="超时出库"
+                        android:textColor="@color/ink"
+                        android:textSize="@dimen/txt_xl"
+                        android:textStyle="bold" />
+
+                    <!-- 倒计时Badge -->
+                    <TextView
+                        android:id="@+id/tv_countdown"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="@dimen/spacing_lg"
+                        android:background="@drawable/bg_header_countdown"
+                        android:textColor="@color/accent"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="--:--:--"
+                        android:paddingHorizontal="@dimen/card_margin_bottom"
+                        android:paddingVertical="5dp"
+                        android:visibility="visible" />
+                </LinearLayout>
+
+                <!-- 右侧：数量胶囊 + 刷新 -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <!-- 超时数量：.timeout-count -->
+                    <TextView
+                        android:id="@+id/tv_timeout_count"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_timeout_count"
+                        android:textColor="@color/warning"
+                        android:textSize="@dimen/txt_lg"
+                        android:textStyle="bold"
+                        android:paddingHorizontal="@dimen/pad_card_h"
+                        android:paddingVertical="@dimen/spacing_sm"
+                        android:text="0件超时"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+
+                    <!-- 刷新按钮 -->
+                    <Button
+                        android:id="@+id/btn_refresh"
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/input_height_lg"
+                        android:minWidth="96dp"
+                        android:paddingHorizontal="@dimen/pad_card_h"
+                        android:background="@drawable/bg_btn_accent"
+                        android:textColor="@color/accent"
+                        android:textSize="@dimen/txt_sm"
+                        android:textStyle="bold"
+                        android:text="刷新" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- 列表容器：.timeout-list（超时卡片动态添加到此容器） -->
+            <LinearLayout
+                android:id="@+id/timeout_list_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <!-- 空态：.timeout-empty -->
+            <LinearLayout
+                android:id="@+id/tv_timeout_empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingVertical="@dimen/empty_padding_vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="@dimen/empty_icon_size"
+                    android:layout_height="@dimen/empty_icon_size"
+                    android:text="✅"
+                    android:textSize="@dimen/empty_icon_txt"
+                    android:gravity="center"
+                    android:alpha="0.5"
+                    android:layout_marginBottom="@dimen/pad_card_v" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="暂无超时件"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="@dimen/spacing_md" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="当前没有需要出库的超时包裹"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_base"
+                    android:gravity="center" />
+            </LinearLayout>
+
+            <!-- 旧加载态（底部小 ProgressBar，保留作备用） -->
+            <ProgressBar
+                android:id="@+id/progress_bar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:visibility="gone"
+                android:indeterminateTint="@color/warning"
+                android:layout_marginTop="40dp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- 全屏加载遮罩（点击刷新时显示，遮罩列表） -->
+    <FrameLayout
+        android:id="@+id/loading_mask"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="32dp"
+            android:paddingVertical="@dimen/spacing_3xl"
+            android:background="@drawable/bg_toast">
+
+            <ProgressBar
+                android:layout_width="@dimen/progress_size"
+                android:layout_height="@dimen/progress_size"
+                android:indeterminateTint="@color/accent"
+                android:layout_marginBottom="@dimen/spacing_lg" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="正在加载超时件..."
+                android:textColor="@color/ink2"
+                android:textSize="@dimen/txt_base" />
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

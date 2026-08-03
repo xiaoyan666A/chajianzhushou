@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 浅色主题（MODE_NIGHT_YES 时生效）：亮色 UI 需要深色状态栏/导航栏图标
+         注意：浅色模式强制 NIGHT uiMode，DayNight 主题会解析出"暗色"派生属性（白色文字/白色开关/白色控件），
+         因此必须在此显式覆盖为浅色适用值，否则 Spinner 文字、开关、单选圈、输入框等会显示为白色看不清。 -->
+    <style name="Theme.Chajianzhushou" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorPrimaryVariant">#FF00967F</item>
+        <item name="colorOnPrimary">@color/bg</item>
+        <item name="colorSecondary">@color/accent</item>
+        <item name="colorSecondaryVariant">#FF00967F</item>
+        <item name="colorOnSecondary">@color/bg</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="colorSurface">@color/card_solid</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">#FFEEF2F6</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowBackground">@color/bg</item>
+
+        <!-- 控件派生色：文字 / 开关 / 单选圈 / Spinner 箭头 / 输入框光标等统一走浅色深色值 -->
+        <item name="android:textColorPrimary">@color/ink</item>
+        <item name="android:textColorSecondary">@color/ink2</item>
+        <item name="android:textColorTertiary">@color/muted</item>
+        <item name="android:textColorHint">@color/muted</item>
+        <item name="android:colorForeground">@color/ink2</item>
+        <item name="colorControlNormal">@color/ink2</item>
+        <item name="colorControlActivated">@color/accent</item>
+        <item name="colorControlHighlight">@color/accent_12</item>
+        <item name="colorSwitchThumbNormal">@color/ink2</item>
+        <item name="colorSurfaceVariant">@color/hair2</item>
+        <item name="colorOutline">@color/hair2</item>
+    </style>
+</resources>
