@@ -262,8 +262,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="@dimen/switch_height"
                     android:minWidth="40dp"
-                    android:thumbTint="@color/white_50"
-                    android:trackTint="@color/white_10" />
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
             </LinearLayout>
 
             <!-- 显示已出库 Toggle -->
@@ -287,8 +287,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="@dimen/switch_height"
                     android:minWidth="40dp"
-                    android:thumbTint="@color/white_50"
-                    android:trackTint="@color/white_10"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track"
                     android:checked="true" />
             </LinearLayout>
         </LinearLayout>

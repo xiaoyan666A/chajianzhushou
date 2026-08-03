@@ -420,7 +420,10 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switch_timeout_mark_enabled"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
             </LinearLayout>
 
             <View
@@ -569,7 +572,10 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switch_grid_manual_columns"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
             </LinearLayout>
 
             <LinearLayout
@@ -1143,7 +1149,10 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switch_asr_enabled"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
             </LinearLayout>
 
             <View
@@ -1338,7 +1347,10 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switch_tts_enabled"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
             </LinearLayout>
 
             <View
@@ -1612,7 +1624,10 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switch_logs_enabled"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
             </LinearLayout>
 
             <Button
@@ -1732,7 +1747,10 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switch_server_connect"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
             </LinearLayout>
 
             <View
@@ -1770,7 +1788,10 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switch_sync_query"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track"
                     android:checked="true" />
             </LinearLayout>
 
@@ -1793,7 +1814,10 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switch_sync_timeout"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track"
                     android:checked="true" />
             </LinearLayout>
 
@@ -1816,7 +1840,10 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switch_sync_settings"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track"
                     android:checked="true" />
             </LinearLayout>
 

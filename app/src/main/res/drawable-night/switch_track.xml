@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 开关轨道（浅色模式资源）：开启=绿色胶囊，关闭=半透明灰胶囊 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true">
+        <shape android:shape="rectangle">
+            <size android:width="44dp" android:height="24dp" />
+            <corners android:radius="12dp" />
+            <solid android:color="#FF00C853" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <size android:width="44dp" android:height="24dp" />
+            <corners android:radius="12dp" />
+            <solid android:color="@color/white_30" />
+        </shape>
+    </item>
+</selector>
