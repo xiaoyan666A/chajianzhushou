@@ -7,6 +7,7 @@ import android.content.ClipboardManager;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -35,8 +36,10 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.cardview.widget.CardView;
+import androidx.core.content.FileProvider;
 import androidx.fragment.app.Fragment;
 
 import org.json.JSONArray;
@@ -179,6 +182,19 @@ public class QueryFragment extends Fragment {
                         }
                     });
 
+    // 拍照出库：调系统相机拍照 → 压缩 → 上传照片 → 出库
+    private final androidx.activity.result.ActivityResultLauncher<Uri> picOutboundLauncher =
+            registerForActivityResult(new ActivityResultContracts.TakePicture(), result -> {
+                if (!isViewReady) return;
+                if (result != null && result) {
+                    onPhotoCaptured();
+                } else {
+                    safeToast("已取消拍照");
+                }
+            });
+    private String picOutboundPendingBillCode;
+    private JSONObject picOutboundPendingItem;
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
@@ -266,6 +282,17 @@ public class QueryFragment extends Fragment {
                             apiService != null ? apiService.getOkHttpClient() : null,
                             trackingNumber, expressCompanyCode);
                 } catch (Throwable ignore) {}
+            }
+            @Override public void onPicOutboundClick(String billCode, JSONObject item) {
+                QueryFragment.this.onPicOutboundClick(billCode, item);
+            }
+            @Override public boolean isPicOutboundEnabled() {
+                try {
+                    return requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE)
+                            .getBoolean("pic_outbound_enabled", false);
+                } catch (Exception e) {
+                    return false;
+                }
             }
             @Override public void toast(String msg) { safeToast(msg); }
         });
@@ -752,6 +779,109 @@ public class QueryFragment extends Fragment {
     }
 
     // ===== Helpers =====
+
+    // ===== 拍照出库（仅待出库包裹卡片上的"拍照出库"按钮触发） =====
+
+    /** 点击"拍照出库"：打开系统相机拍照 */
+    private void onPicOutboundClick(String billCode, JSONObject item) {
+        if (billCode == null || billCode.length() == 0) {
+            safeToast("缺少单号");
+            return;
+        }
+        try {
+            java.io.File dir = new java.io.File(requireContext().getCacheDir(), "photos");
+            if (!dir.exists()) dir.mkdirs();
+            java.io.File photo = new java.io.File(dir, "out_" + System.currentTimeMillis() + ".jpg");
+            Uri uri = FileProvider.getUriForFile(requireContext(),
+                    requireContext().getPackageName() + ".fileprovider", photo);
+            picOutboundPendingBillCode = billCode;
+            picOutboundPendingItem = item;
+            picOutboundLauncher.launch(uri);
+        } catch (Exception e) {
+            safeToast("无法启动相机: " + e.getMessage());
+        }
+    }
+
+    /** 拍照成功：压缩照片 → 上传（失败不阻断）→ 出库 → 刷新列表 */
+    private void onPhotoCaptured() {
+        try {
+            java.io.File dir = new java.io.File(requireContext().getCacheDir(), "photos");
+            java.io.File[] files = dir.listFiles((d, n) -> n.endsWith(".jpg"));
+            java.io.File photo = null;
+            if (files != null) {
+                for (java.io.File f : files) {
+                    if (photo == null || f.lastModified() > photo.lastModified()) photo = f;
+                }
+            }
+            if (photo == null || !photo.exists()) {
+                safeToast("照片读取失败");
+                return;
+            }
+            final String base64 = compressPhotoToBase64(photo);
+            final String bill = picOutboundPendingBillCode;
+            final JSONObject pkg = picOutboundPendingItem;
+            if (bill == null) {
+                safeToast("缺少单号");
+                return;
+            }
+            safeToast("照片已就绪，正在出库...");
+            // 上传照片（失败不阻断出库，与官方兜底一致）
+            directApiClient.uploadOutboundPic(bill, resolveExpressCompanyCode(pkg), base64,
+                    new DirectApiClient.OutboundCallback() {
+                        @Override public void onSuccess(JSONObject response) {
+                            doPicOutbound(bill, pkg);
+                        }
+                        @Override public void onError(String error) {
+                            Log.w(TAG, "照片上传失败(继续出库): " + error);
+                            doPicOutbound(bill, pkg);
+                        }
+                    });
+        } catch (Exception e) {
+            safeToast("照片处理失败: " + e.getMessage());
+        }
+    }
+
+    /** 执行出库并刷新列表 */
+    private void doPicOutbound(final String billCode, final JSONObject item) {
+        String receiveMan = firstNonEmpty(
+                item == null ? "" : item.optString("recipientName", ""),
+                item == null ? "" : item.optString("receiveMan", ""),
+                item == null ? "" : item.optString("receiver", ""));
+        // 站点固定坐标（与超时件出库一致）
+        String lation = "116.236085,39.084864";
+        directApiClient.outboundPackage(billCode, receiveMan, lation, "",
+                new DirectApiClient.OutboundCallback() {
+                    @Override public void onSuccess(JSONObject response) {
+                        if (!isViewReady) return;
+                        safeToast("出库成功: " + billCode);
+                        try { LogRecorder.info(requireContext(), "QUERY", "拍照出库", "billCode=" + billCode); } catch (Exception ignore) {}
+                        performQuery(true);
+                    }
+                    @Override public void onError(String error) {
+                        if (!isViewReady) return;
+                        safeToast("出库失败: " + error);
+                    }
+                });
+    }
+
+    /** 压缩照片并转 base64（最长边 1280，JPEG 80%） */
+    private String compressPhotoToBase64(java.io.File file) throws Exception {
+        final int MAX_SIDE = 1280;
+        android.graphics.BitmapFactory.Options bounds = new android.graphics.BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        android.graphics.BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+        int sample = 1;
+        int maxSide = Math.max(bounds.outWidth, bounds.outHeight);
+        while (maxSide / (sample * 2) >= MAX_SIDE) sample *= 2;
+        android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+        opts.inSampleSize = sample;
+        android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(file.getAbsolutePath(), opts);
+        if (bmp == null) throw new Exception("图片解码失败");
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, bos);
+        bmp.recycle();
+        return android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP);
+    }
 
     private void safeToast(String msg) {
         if (!isAdded() || !isViewReady) return;

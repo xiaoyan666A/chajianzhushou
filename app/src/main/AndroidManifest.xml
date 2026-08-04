@@ -4,6 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 拍照出库：调系统相机拍照 -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <!-- 自动切换主题需获取位置以计算日出日落（用户授权后） -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -18,6 +20,17 @@
         android:theme="@style/Theme.Chajianzhushou"
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
+        <!-- 拍照出库：系统相机写入临时照片文件 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- LoginActivity：启动入口，未登录时显示登录界面；configChanges 不能声明 uiMode -->
         <activity
             android:name=".LoginActivity"

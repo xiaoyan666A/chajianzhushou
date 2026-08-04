@@ -170,6 +170,9 @@ public class SettingsFragment extends Fragment {
     // Views - 界面显示（字号）
     private Spinner spinnerUiFontScale;
 
+    // Views - 界面显示（拍照出库按钮）
+    private SwitchCompat switchPicOutboundEnabled;
+
     // Views - 界面显示（竖向排列每行卡片数）
     private SwitchCompat switchGridManualColumns;
     private Spinner spinnerGridManualColumnsPortrait;
@@ -345,6 +348,15 @@ public class SettingsFragment extends Fragment {
 
         // 界面字号：小/中/大/特大，选择后立即重建界面生效
         spinnerUiFontScale = view.findViewById(R.id.spinner_ui_font_scale);
+        switchPicOutboundEnabled = view.findViewById(R.id.switch_pic_outbound_enabled);
+        if (switchPicOutboundEnabled != null) {
+            switchPicOutboundEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isLoadingSettings) return;
+                settingsStore.set(SettingsStore.KEY_PIC_OUTBOUND_ENABLED, isChecked);
+                Log.d(TAG, "拍照出库按钮开关: " + isChecked);
+                try { LogRecorder.info(requireContext(), "Settings", "拍照出库按钮开关", String.valueOf(isChecked)); } catch (Exception ignore) {}
+            });
+        }
         if (spinnerUiFontScale != null) {
             ArrayAdapter<String> fontAdapter = new ArrayAdapter<>(
                     requireContext(), R.layout.spinner_item, UI_FONT_SCALE_LABELS);
@@ -893,6 +905,7 @@ public class SettingsFragment extends Fragment {
         spinnerTimeoutMarkDays = null;
         switchTimeoutMarkEnabled = null;
         spinnerUiFontScale = null;
+        switchPicOutboundEnabled = null;
         switchGridManualColumns = null;
         spinnerGridManualColumnsPortrait = null;
         spinnerGridManualColumnsLandscape = null;
@@ -1246,6 +1259,9 @@ public class SettingsFragment extends Fragment {
             // 功能区总开关（默认开启），并按状态禁用对应区域配置
             if (switchUiDisplayEnabled != null) {
                 switchUiDisplayEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_UI_DISPLAY_ENABLED, true));
+            }
+            if (switchPicOutboundEnabled != null) {
+                switchPicOutboundEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_PIC_OUTBOUND_ENABLED, false));
             }
             if (switchCacheMgmtEnabled != null) {
                 switchCacheMgmtEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_CACHE_MGMT_ENABLED, true));

@@ -13,6 +13,7 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -47,6 +48,10 @@ public class PackageCardFactory {
         void showImagePreview(ImageView iv);
         /** 长按卡片弹出轨迹详情 */
         void showTrajectory(String trackingNumber, String expressCompanyCode);
+        /** 点击"拍照出库"按钮（仅待出库包裹显示） */
+        void onPicOutboundClick(String billCode, JSONObject item);
+        /** 拍照出库按钮显示开关（设置页控制） */
+        boolean isPicOutboundEnabled();
         /** Toast 提示 */
         void toast(String msg);
     }
@@ -312,6 +317,26 @@ public class PackageCardFactory {
         }
         root.addView(info);
         root.addView(statusBox);
+
+        // ===== 拍照出库按钮：仅待出库（pending）包裹显示，且设置中开关开启 =====
+        if (pending && host.isPicOutboundEnabled()) {
+            Button btnPicOutbound = new Button(context);
+            btnPicOutbound.setText("拍照出库");
+            btnPicOutbound.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.chip_text_size));
+            btnPicOutbound.setTypeface(Typeface.DEFAULT_BOLD);
+            btnPicOutbound.setBackgroundResource(R.drawable.bg_btn_accent);
+            btnPicOutbound.setTextColor(accent);
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, res.getDimensionPixelSize(R.dimen.btn_height_sm));
+            blp.topMargin = dp10;
+            btnPicOutbound.setLayoutParams(blp);
+            btnPicOutbound.setOnClickListener(v -> {
+                try {
+                    host.onPicOutboundClick(trackingNumber, item);
+                } catch (Throwable ignore) {}
+            });
+            root.addView(btnPicOutbound);
+        }
 
         // 超时件：卡片黄色边框缓慢闪烁（①）
         if (timeout) {

@@ -1310,4 +1310,137 @@ public class DirectApiClient {
             }
         });
     }
+
+    /**
+     * 出库照片绑定上传（appUploadWaybillImageSync，与官方"拍照出库"一致）。
+     * picture 传 base64 图片内容；type=2 表示出库照片。回调在主线程派发。
+     */
+    public void uploadOutboundPic(final String billCode, final String expressCompanyCode,
+                                 final String base64Pic, final OutboundCallback callback) {
+        if (callback == null) return;
+        Threads.io().execute(() -> {
+            try {
+                JSONObject auth = ensureLogin();
+                JSONObject data = new JSONObject();
+                data.put("billCode", billCode == null ? "" : billCode);
+                data.put("depotCode", DEPOT_CODE);
+                data.put("expressCompanyCode", expressCompanyCode == null ? "" : expressCompanyCode);
+                data.put("fileName", "out_" + System.currentTimeMillis() + ".jpg");
+                data.put("picture", base64Pic == null ? "" : base64Pic);
+                data.put("type", 2);
+                String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
+
+                String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
+                String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
+
+                Request request = new Request.Builder()
+                        .url(LOGIN_URL)
+                        .header("X-Zop-Name", "appUploadWaybillImageSync")
+                        .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
+                        .header("X-Ca-Version", "1")
+                        .header("x-iam-token", auth.getString("accessToken"))
+                        .header("X-Userid", auth.getString("userId"))
+                        .header("X-Unionid", unionId)
+                        .header("X-Device-Id", DEFAULT_DEVICE_ID)
+                        .header("X-Ys-Dt", ysDt)
+                        .header("X-App-Version", "4.51.5")
+                        .header("User-Agent", "wanjiaExpress/4.51.5 (iPhone; iOS 26.6; Scale/3.00)")
+                        .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
+                        .build();
+
+                try (Response resp = client.newCall(request).execute()) {
+                    if (resp.body() == null) {
+                        mainHandler.post(() -> callback.onError("照片上传响应为空"));
+                        return;
+                    }
+                    JSONObject body = new JSONObject(resp.body().string());
+                    if (body.optBoolean("status", false) && !body.isNull("result")) {
+                        final JSONObject result = body.getJSONObject("result");
+                        mainHandler.post(() -> callback.onSuccess(result));
+                    } else {
+                        String msg = body.optString("message", "照片上传失败");
+                        mainHandler.post(() -> callback.onError(msg));
+                    }
+                }
+            } catch (Exception e) {
+                final String err = (e == null || e.getMessage() == null) ? "照片上传异常" : e.getMessage();
+                mainHandler.post(() -> callback.onError(err));
+            }
+        });
+    }
+
+    /**
+     * 普通包裹出库（tuxi.spm.stock.outbound，与官方"拍照出库"一致）。
+     * 回调在主线程派发，可直接更新 UI。
+     */
+    public void outboundPackage(final String billCode, final String receiveMan,
+                                final String lation, final String remark, final OutboundCallback callback) {
+        if (callback == null) return;
+        Threads.io().execute(() -> {
+            try {
+                JSONObject auth = ensureLogin();
+                JSONObject data = new JSONObject();
+                data.put("receiveMan", receiveMan == null ? "" : receiveMan);
+                data.put("lation", lation == null ? "" : lation);
+                data.put("takeDate", System.currentTimeMillis());
+                data.put("billCode", billCode == null ? "" : billCode);
+                data.put("remark", remark == null ? "" : remark);
+                String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
+
+                String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
+                String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
+
+                Request request = new Request.Builder()
+                        .url(LOGIN_URL)
+                        .header("X-Zop-Name", "tuxi.spm.stock.outbound")
+                        .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
+                        .header("X-Ca-Version", "1")
+                        .header("x-iam-token", auth.getString("accessToken"))
+                        .header("X-Userid", auth.getString("userId"))
+                        .header("X-Unionid", unionId)
+                        .header("X-Device-Id", DEFAULT_DEVICE_ID)
+                        .header("X-Ys-Dt", ysDt)
+                        .header("X-App-Version", "4.51.5")
+                        .header("User-Agent", "wanjiaExpress/4.51.5 (iPhone; iOS 26.6; Scale/3.00)")
+                        .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
+                        .build();
+
+                JSONObject body;
+                try (Response resp = client.newCall(request).execute()) {
+                    if (resp.body() == null) {
+                        mainHandler.post(() -> callback.onError("出库响应为空"));
+                        return;
+                    }
+                    body = new JSONObject(resp.body().string());
+                }
+                Log.d(TAG, "出库返回: " + body.toString());
+
+                boolean ok = body.optBoolean("status", false);
+                JSONObject result = body.optJSONObject("result");
+                if (result != null) {
+                    ok = ok && result.optBoolean("status", false);
+                } else {
+                    ok = false;
+                }
+                if (ok) {
+                    mainHandler.post(() -> callback.onSuccess(body));
+                    return;
+                }
+
+                String msg = (result != null) ? result.optString("failReason", "") : "";
+                if (msg.length() == 0) msg = body.optString("message", "未知错误");
+                if (msg.contains("token") || msg.contains("登录") || msg.contains("未授权")
+                        || msg.contains("过期") || msg.contains("无效") || msg.contains("令牌")) {
+                    accessToken = null;
+                    userId = null;
+                    tokenExpiresAt = 0;
+                }
+                final String fMsg = msg;
+                mainHandler.post(() -> callback.onError(fMsg));
+            } catch (Exception e) {
+                final String err = (e == null || e.getMessage() == null) ? "出库异常" : e.getMessage();
+                mainHandler.post(() -> callback.onError(err));
+            }
+        });
+    }
 }
