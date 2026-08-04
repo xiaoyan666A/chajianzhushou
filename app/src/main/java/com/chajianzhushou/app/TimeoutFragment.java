@@ -646,7 +646,8 @@ public class TimeoutFragment extends Fragment {
             btnOutbound.setText("出库中...");
         }
 
-        apiService.outboundPackage(billCode, receiveMan, new ApiService.ApiCallback() {
+        // 直连 ZTO 网关出库（按抓包文件将超时件出库.har），不再依赖电脑端
+        directApiClient.outboundTimeoutPackage(billCode, receiveMan, new DirectApiClient.OutboundCallback() {
             @Override
             public void onSuccess(JSONObject response) {
                 if (!isViewReady) return;
@@ -689,7 +690,7 @@ public class TimeoutFragment extends Fragment {
                 if (btnOutbound != null) {
                     try {
                         btnOutbound.setEnabled(true);
-                        btnOutbound.setText("立即出库");
+                        btnOutbound.setText("立即超时出库");
                     } catch (Exception ignore) {}
                 }
                 safeToast("出库失败: " + error);

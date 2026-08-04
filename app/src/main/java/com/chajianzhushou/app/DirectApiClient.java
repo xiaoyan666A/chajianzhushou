@@ -1,6 +1,8 @@
 package com.chajianzhushou.app;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -33,12 +35,18 @@ import okhttp3.Response;
 public class DirectApiClient {
     private static final String TAG = "DirectApi";
     private static final String DEPOT_CODE = "TUXI39300384927";
+    // 超时件出库（按抓包文件将超时件出库.har）：固定坐标与 remark
+    private static final String TIMEOUT_OUTBOUND_LATION = "116.236085,39.084864";
+    private static final String TIMEOUT_OUTBOUND_REMARK = "超时出库";
+    // 超时件出库网关（抓包文件中的地址）
+    private static final String TIMEOUT_OUTBOUND_URL = "https://ztwjgateway.zto.com/gateway.do/";
 
     // 登录请求体（与 server.js LOGIN_POST_DATA 一致）
     private static final String LOGIN_BODY = "data=%7B%0A%20%20%22platformName%22%20%3A%20%22app%22%2C%0A%20%20%22deviceId%22%20%3A%20%221750F6BE-5052-4FE6-9579-E8AF49522BA4%22%2C%0A%20%20%22authorization%22%20%3A%20%22tKow9KH19L%2BtE%2BKQ4yceDyYQ2LkAOvdJpmJIGgn8sIk9AMFQb9pF1DltaHCrMKM7mC58e1owKwQ%5C%2FF7qpl%2B7U7Ubqv9ZrFanwaCsnEZi2V1h7rqgl2qSlFUebLNlpgZRaS%5C%2Fkb6LqtpoRVGPuVVCYk7%5C%2FsCOloAD6vnMTW9KHOuQ5w%3D%22%2C%0A%20%20%22verifyId%22%20%3A%20%22%22%2C%0A%20%20%22deviceName%22%20%3A%20%22iPhone%22%0A%7D";
 
     private final OkHttpClient client;
     private final Context appContext;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private String accessToken;
     private String userId;
     private long tokenExpiresAt;
@@ -929,5 +937,93 @@ public class DirectApiClient {
             } catch (Exception ignore) {}
         }
         return null;
+    }
+
+    // ===== Timeout Outbound（超时件直连出库，不依赖电脑端） =====
+
+    public interface OutboundCallback {
+        void onSuccess(JSONObject response);
+        void onError(String error);
+    }
+
+    /**
+     * 超时件直连出库：按抓包文件"将超时件出库.har"构造请求。
+     * remark 固定为"超时出库"，lation 固定坐标，takeDate 取当前毫秒时间戳。
+     * 回调在主线程派发，可直接更新 UI。
+     */
+    public void outboundTimeoutPackage(final String billCode, final String receiveMan, final OutboundCallback callback) {
+        if (callback == null) return;
+        new Thread(() -> {
+            try {
+                JSONObject auth = ensureLogin();
+                JSONObject data = new JSONObject();
+                data.put("receiveMan", receiveMan == null ? "" : receiveMan);
+                data.put("lation", TIMEOUT_OUTBOUND_LATION);
+                data.put("takeDate", System.currentTimeMillis());
+                data.put("billCode", billCode == null ? "" : billCode);
+                data.put("remark", TIMEOUT_OUTBOUND_REMARK);
+
+                String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
+
+                String ysDt = auth.optString("ysDt", "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+");
+                String unionId = auth.optString("unionId", "unionB-wgxs_oGtI1bbTV4rRKB");
+                String deviceId = auth.optString("deviceId", "1750F6BE-5052-4FE6-9579-E8AF49522BA4");
+
+                Request request = new Request.Builder()
+                        .url(TIMEOUT_OUTBOUND_URL)
+                        .header("X-Zop-Name", "tuxi.spm.stock.outbound")
+                        .header("X-Sv-V", "com.zto.ztoFamilyNew_4.44.0")
+                        .header("X-Ca-Version", "1")
+                        .header("x-iam-token", auth.getString("accessToken"))
+                        .header("X-Userid", auth.getString("userId"))
+                        .header("X-Unionid", unionId)
+                        .header("X-Device-Id", deviceId)
+                        .header("X-Ys-Dt", ysDt)
+                        .header("X-App-Version", "4.44.0")
+                        .header("User-Agent", "wanjiaExpress/4.44.0 (iPhone; iOS 26.1; Scale/3.00)")
+                        .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
+                        .build();
+
+                JSONObject body;
+                try (Response resp = client.newCall(request).execute()) {
+                    if (resp.body() == null) {
+                        Exception e = new Exception("出库响应为空");
+                        try { LogRecorder.error(appContext, "DirectApi", "超时出库失败", e.getMessage()); } catch (Exception ignore) {}
+                        throw e;
+                    }
+                    body = new JSONObject(resp.body().string());
+                }
+                Log.d(TAG, "超时出库返回: " + body.toString());
+                try { LogRecorder.info(appContext, "DirectApi", "超时出库返回", body.toString()); } catch (Exception ignore) {}
+
+                // 成功判定：顶层 status 与 result.status 均为 true（抓包响应结构）
+                boolean ok = body.optBoolean("status", false);
+                JSONObject result = body.optJSONObject("result");
+                if (result != null) {
+                    ok = ok && result.optBoolean("status", false);
+                } else {
+                    ok = false;
+                }
+                if (ok) {
+                    mainHandler.post(() -> callback.onSuccess(body));
+                    return;
+                }
+
+                String msg = (result != null) ? result.optString("failReason", "") : "";
+                if (msg.length() == 0) msg = body.optString("message", "未知错误");
+                // token 过期检测：命中关键词则清缓存，下次自动重登
+                if (msg.contains("token") || msg.contains("登录") || msg.contains("未授权")
+                        || msg.contains("过期") || msg.contains("无效") || msg.contains("令牌")) {
+                    accessToken = null;
+                    userId = null;
+                    tokenExpiresAt = 0;
+                }
+                final String fMsg = msg;
+                mainHandler.post(() -> callback.onError(fMsg));
+            } catch (Exception e) {
+                final String err = (e == null || e.getMessage() == null) ? "出库异常" : e.getMessage();
+                mainHandler.post(() -> callback.onError(err));
+            }
+        }, "timeout-outbound").start();
     }
 }

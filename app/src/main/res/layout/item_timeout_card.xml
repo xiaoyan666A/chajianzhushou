@@ -147,7 +147,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 第2行：立即出库按钮 .timeout-outbound-btn (橙色警告风格，整行宽度) -->
+    <!-- 第2行：立即超时出库按钮 .timeout-outbound-btn (橙色警告风格，整行宽度) -->
     <Button
         android:id="@+id/btn_outbound"
         style="?android:attr/borderlessButtonStyle"
@@ -158,7 +158,7 @@
         android:textColor="@color/warning"
         android:textSize="@dimen/txt_base"
         android:textStyle="bold"
-        android:text="立即出库"
+        android:text="立即超时出库"
         android:paddingHorizontal="@dimen/spacing_lg"
         android:layout_marginTop="@dimen/spacing_lg" />
 </LinearLayout>

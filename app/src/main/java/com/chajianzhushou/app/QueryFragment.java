@@ -79,6 +79,7 @@ public class QueryFragment extends Fragment {
     private boolean hasQueried = false;
     private LinearLayout resultsContainer;
     private LinearLayout historyPanel;
+    private View armedHistoryView = null; // 当前处于"删除待命"态的历史 chip（null=无）
     private ProgressBar progressBar;
     private LinearLayout tvNoResults;
     private FrameLayout loadingMask;
@@ -94,6 +95,10 @@ public class QueryFragment extends Fragment {
     private String lastQueriedBillCode = "";
     // 最后一次手动查询使用的类型：自动刷新固定用它，手动切换类型不影响已开始的自动刷新
     private String lastQueriedType = "phoneTail";
+    // 刚刚出库标记：本次会话中由"待取件"变成"已出库"的包裹单号集合（手动重新查询时清空）
+    private final java.util.Set<String> justOutboundBillCodes = new java.util.HashSet<>();
+    // 渲染代数：renderList 每次执行自增，用于让过期的异步回调（如颗粒消失动画）不再重复渲染
+    private int renderGeneration = 0;
     private boolean isGridView = false;
     private boolean showDelivered = true;
     private boolean isAutoRefresh = false;
@@ -938,6 +943,8 @@ public class QueryFragment extends Fragment {
         String effectiveType = isAuto ? lastQueriedType : searchType;
         if (!isAuto) {
             lastQueriedType = effectiveType;
+            // 手动查询：清空"刚刚出库"标记，重新按服务器返回构建分块列表
+            justOutboundBillCodes.clear();
         }
         // 记录查询历史（输入框聚焦时展示"最近查询"）；自动刷新/语音识别不计入
         if (recordHistory && !isAuto) {
@@ -1104,6 +1111,8 @@ public class QueryFragment extends Fragment {
         currentPackages = newPackages;
 
         java.util.Set<String> autoFreshBillCodes = null; // pendingOnly 响应基线，供补查"消失的待取件"用
+        List<String> gonePendingBillCodes = new ArrayList<>(); // 自动刷新+关闭"显示已出库"：消失的待取件（刚出库）→ 颗粒化渐隐
+        boolean deferRender = false; // 需要先播完颗粒消失动画再渲染
         if (isAuto && oldPackages != null && oldPackages.size() > 0) {
             java.util.Set<String> newBillCodes = new java.util.HashSet<>();
             for (JSONObject pkg : newPackages) {
@@ -1122,9 +1131,9 @@ public class QueryFragment extends Fragment {
                     currentPackages.add(oldPkg);
                 }
             }
-            // 显示已出库开启：旧"待取件"在响应中消失（多半刚出库）时，先保留原卡片避免闪烁消失，
-            // 并记录 pendingOnly 响应基线，稍后按单号补查最新状态、原位更新为已出库。
             if (sd) {
+                // 显示已出库开启：旧"待取件"在响应中消失（多半刚出库）时，先保留原卡片避免闪烁消失，
+                // 立即标记为"刚刚出库"（进入"待取件→超时件"之间的专用块），稍后按单号补查最新状态、原位更新为已出库。
                 autoFreshBillCodes = newBillCodes;
                 for (JSONObject oldPkg : oldPackages) {
                     if ("delivered".equals(oldPkg.optString("status", ""))) continue;
@@ -1133,9 +1142,26 @@ public class QueryFragment extends Fragment {
                             oldPkg.optString("waybillCode", ""));
                     if (bc.length() > 0 && !newBillCodes.contains(bc)) {
                         currentPackages.add(oldPkg);
+                        justOutboundBillCodes.add(bc);
                     }
                 }
+            } else {
+                // 显示已出库关闭：消失的待取件（多半刚出库）不保留，播放"颗粒化渐隐"消失动画
+                for (JSONObject oldPkg : oldPackages) {
+                    if ("delivered".equals(oldPkg.optString("status", ""))) continue;
+                    String bc = firstNonEmpty(oldPkg.optString("billCode", ""),
+                            oldPkg.optString("trackingNumber", ""),
+                            oldPkg.optString("waybillCode", ""));
+                    if (bc.length() > 0 && !newBillCodes.contains(bc)) {
+                        gonePendingBillCodes.add(bc);
+                    }
+                }
+                deferRender = !gonePendingBillCodes.isEmpty();
             }
+        }
+        // 四块结构重排：待取件 → 刚刚出库 → 超时件 → 已出库（只重排"刚刚出库"块，其余块保持原相对顺序，最小移动）
+        if (isAuto) {
+            reorderPackagesForDisplay();
         }
         // 自动刷新 + 显示已出库：旧列表中的"待取件"在 pendingOnly 响应中消失 → 多半刚出库。
         // 按单号补查最新状态并用新数据原位替换，保证卡片不消失，状态/边框/图片实时更新为已出库。
@@ -1193,7 +1219,11 @@ public class QueryFragment extends Fragment {
         }
 
         long _tRenderStart = System.currentTimeMillis();
-        renderList();
+        if (deferRender) {
+            playDissolveAndRender(gonePendingBillCodes);
+        } else {
+            renderList();
+        }
         long _renderCost = System.currentTimeMillis() - _tRenderStart;
         long _otherCost = (_tRenderStart - _tHandleStart) - _parseFilterCost;
         if (_otherCost < 0) _otherCost = 0;
@@ -1262,11 +1292,20 @@ public class QueryFragment extends Fragment {
                     @Override
                     public void onSuccess(JSONObject response) {
                         if (!isViewReady) return;
-                        mainHandler.post(() -> applyFreshPackage(billCode, oldPkg,
-                                extractFirstPackageFromQueryResponse(response)));
+                        mainHandler.post(() -> {
+                            JSONObject fresh = extractFirstPackageFromQueryResponse(response);
+                            if (fresh == null) {
+                                clearJustOutboundMark(billCode);
+                            } else {
+                                applyFreshPackage(billCode, oldPkg, fresh);
+                            }
+                        });
                     }
                     @Override
-                    public void onError(String error) {}
+                    public void onError(String error) {
+                        if (!isViewReady) return;
+                        mainHandler.post(() -> clearJustOutboundMark(billCode));
+                    }
                 });
             } else if (directApiClient != null) {
                 new Thread(() -> {
@@ -1277,7 +1316,13 @@ public class QueryFragment extends Fragment {
                     if (!isViewReady) return;
                     final JSONObject finalFresh = fresh;
                     try {
-                        mainHandler.post(() -> applyFreshPackage(billCode, oldPkg, finalFresh));
+                        mainHandler.post(() -> {
+                            if (finalFresh == null) {
+                                clearJustOutboundMark(billCode);
+                            } else {
+                                applyFreshPackage(billCode, oldPkg, finalFresh);
+                            }
+                        });
                     } catch (Throwable ignore) {}
                 }, "fresh-pkg").start();
             }
@@ -1301,11 +1346,27 @@ public class QueryFragment extends Fragment {
         return null;
     }
 
+    /** 取消某单号的"刚刚出库"标记（补查失败/无结果/仍为待取件时），并重排+重绘 */
+    private void clearJustOutboundMark(String billCode) {
+        if (billCode == null || billCode.length() == 0) return;
+        if (justOutboundBillCodes.remove(billCode)) {
+            reorderPackagesForDisplay();
+            boolean wasAuto = isAutoRefresh;
+            isAutoRefresh = true;
+            renderList();
+            isAutoRefresh = wasAuto;
+        }
+    }
+
     /** 用补查到的最新包裹数据替换列表中的旧条目（已出库则显示新状态/新图片），并触发差分重绘。 */
     private void applyFreshPackage(String billCode, JSONObject oldPkg, JSONObject fresh) {
-        if (!isViewReady || fresh == null) return;
+        if (!isViewReady) return;
+        if (fresh == null || fresh.length() == 0) {
+            // 补查无结果：取消"刚刚出库"标记，卡片回到待取件块（保持现状，不删除）
+            clearJustOutboundMark(billCode);
+            return;
+        }
         try {
-            if (fresh.length() == 0) return; // 查询不到：保持现状，不主动删除卡片
             Log.d(TAG, "补查单号=" + billCode + " 旧状态=" + oldPkg.optString("status", "")
                     + " 新状态=" + fresh.optString("status", "") + " 新图=" + fresh.optString("imageUrl", ""));
             try {
@@ -1330,6 +1391,13 @@ public class QueryFragment extends Fragment {
                 replaced = true;
             }
             if (replaced) {
+                // 标记"刚刚出库"：补查确认已出库 → 进入"刚刚出库"块；仍为待取件（数据抖动）→ 取消标记
+                if ("delivered".equals(fresh.optString("status", ""))) {
+                    justOutboundBillCodes.add(billCode);
+                } else {
+                    justOutboundBillCodes.remove(billCode);
+                }
+                reorderPackagesForDisplay();
                 // 保持差分渲染模式（避免整批重建造成闪烁/跳动）
                 boolean wasAuto = isAutoRefresh;
                 isAutoRefresh = true;
@@ -1337,6 +1405,213 @@ public class QueryFragment extends Fragment {
                 isAutoRefresh = wasAuto;
             }
         } catch (Throwable ignore) {}
+    }
+
+    // ===== 四块结构排序（待取件 → 刚刚出库 → 超时件 → 已出库） =====
+
+    /** 取包裹单号（兼容 billCode / trackingNumber / waybillCode 三种字段） */
+    private String pkgBillCode(JSONObject pkg) {
+        return firstNonEmpty(pkg.optString("billCode", ""),
+                pkg.optString("trackingNumber", ""),
+                pkg.optString("waybillCode", ""));
+    }
+
+    /** 分块序号：0=待取件，1=刚刚出库，2=超时件，3=已出库；"刚刚出库"优先于"超时件"（约定不特殊处理） */
+    private int packageDisplayBlock(JSONObject pkg) {
+        // 标记优先：合并时"消失的待取件"已标记，立即进入"刚刚出库"块（避免先排到待取件末尾、补查后又跳一次）
+        if (justOutboundBillCodes.contains(pkgBillCode(pkg))) return 1;
+        String status = pkg.optString("status", "");
+        if (!"delivered".equals(status)) return 0;
+        if (isTimeoutPackage(pkg)) return 2;
+        return 3;
+    }
+
+    /** 出库时间毫秒（用于"刚刚出库"块内按时间新→旧排序；解析失败返回 0） */
+    private long packageOutboundMillis(JSONObject pkg) {
+        String t = firstNonEmpty(pkg.optString("outboundTime", ""),
+                pkg.optString("takeDate", ""),
+                pkg.optString("deliveryTime", ""),
+                pkg.optString("deliveredTime", ""),
+                pkg.optString("outTime", ""),
+                pkg.optString("outboundAt", ""));
+        return parseTimeMillis(t);
+    }
+
+    /** 排序用时间：已标记"刚刚出库"但数据仍是待取件（补查未回）的卡片，按"最新"处理，先排块顶 */
+    private long packageSortMillis(JSONObject pkg) {
+        if (!"delivered".equals(pkg.optString("status", ""))) return Long.MAX_VALUE;
+        return packageOutboundMillis(pkg);
+    }
+
+    /** 按四块结构重排 currentPackages：只重排"刚刚出库"块（出库时间新→旧），其余块保持原相对顺序（最小移动） */
+    private void reorderPackagesForDisplay() {
+        if (currentPackages == null || currentPackages.isEmpty()) return;
+        List<JSONObject> b0 = new ArrayList<>();
+        List<JSONObject> b1 = new ArrayList<>();
+        List<JSONObject> b2 = new ArrayList<>();
+        List<JSONObject> b3 = new ArrayList<>();
+        for (JSONObject p : currentPackages) {
+            switch (packageDisplayBlock(p)) {
+                case 1: b1.add(p); break;
+                case 2: b2.add(p); break;
+                case 3: b3.add(p); break;
+                default: b0.add(p); break;
+            }
+        }
+        // 刚刚出库块：出库时间新→旧（时间缺失或相同保持原顺序，排序稳定）
+        java.util.Collections.sort(b1, new java.util.Comparator<JSONObject>() {
+            @Override
+            public int compare(JSONObject x, JSONObject y) {
+                return Long.compare(packageSortMillis(y), packageSortMillis(x));
+            }
+        });
+        List<JSONObject> merged = new ArrayList<>(currentPackages.size());
+        merged.addAll(b0);
+        merged.addAll(b1);
+        merged.addAll(b2);
+        merged.addAll(b3);
+        currentPackages = merged;
+    }
+
+    // ===== 颗粒化渐隐（自动刷新 + 关闭"显示已出库"时，刚出库卡片消失特效） =====
+
+    /** 按单号查找已渲染的卡片视图（兼容网格模式的行内卡片与列表模式的直接子卡片） */
+    private List<View> findCardViewsByBillCodes(List<String> billCodes) {
+        List<View> out = new ArrayList<>();
+        if (resultsContainer == null || billCodes == null || billCodes.isEmpty()) return out;
+        java.util.Set<String> targets = new java.util.HashSet<>(billCodes);
+        try {
+            for (int i = 0; i < resultsContainer.getChildCount(); i++) {
+                View child = resultsContainer.getChildAt(i);
+                if (child instanceof LinearLayout && ((LinearLayout) child).getOrientation() == LinearLayout.HORIZONTAL) {
+                    LinearLayout row = (LinearLayout) child;
+                    for (int j = 0; j < row.getChildCount(); j++) {
+                        View card = row.getChildAt(j);
+                        Object tag = card.getTag(R.id.btn_query);
+                        if (tag != null && targets.contains(tag.toString())) out.add(card);
+                    }
+                } else {
+                    Object tag = child.getTag(R.id.btn_query);
+                    if (tag != null && targets.contains(tag.toString())) out.add(child);
+                }
+            }
+        } catch (Throwable ignore) {}
+        return out;
+    }
+
+    /** 把卡片当前画面截成位图（用于生成颗粒渐隐帧；主线程调用） */
+    private android.graphics.Bitmap captureCardBitmap(View card) {
+        if (card == null || card.getWidth() <= 0 || card.getHeight() <= 0) return null;
+        try {
+            android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(
+                    card.getWidth(), card.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+            card.draw(new android.graphics.Canvas(bmp));
+            return bmp;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 完成一张卡片的消失流程；全部完成后执行 finishAll（重建列表） */
+    private void finishDissolveOne(final int[] remaining, final Runnable finishAll) {
+        synchronized (remaining) {
+            remaining[0]--;
+            if (remaining[0] <= 0) {
+                finishAll.run();
+            }
+        }
+    }
+
+    /** 播放单张卡片的颗粒化渐隐（主线程调用；帧已由后台线程生成） */
+    private void startDissolveAnimation(final View card, final List<android.graphics.Bitmap> frames,
+                                        final int gen, final int[] remaining, final Runnable finishAll) {
+        try {
+            if (!isViewReady || gen != renderGeneration || card.getParent() == null
+                    || frames == null || frames.isEmpty()) {
+                finishDissolveOne(remaining, finishAll);
+                return;
+            }
+            final DissolveView dv = new DissolveView(requireContext());
+            ViewGroup.LayoutParams lp = card.getLayoutParams();
+            LinearLayout parent = (LinearLayout) card.getParent();
+            int idx = parent.indexOfChild(card);
+            parent.removeView(card);
+            dv.setLayoutParams(lp);
+            dv.setFrames(frames);
+            parent.addView(dv, Math.max(0, idx));
+            android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+            anim.setDuration(520);
+            anim.setInterpolator(new android.view.animation.LinearInterpolator());
+            anim.addUpdateListener(a -> dv.setProgress((Float) a.getAnimatedValue()));
+            anim.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(android.animation.Animator animation) {
+                    try {
+                        if (dv.getParent() != null) {
+                            ((ViewGroup) dv.getParent()).removeView(dv);
+                        }
+                    } catch (Throwable ignore) {}
+                    dv.recycleFrames();
+                    finishDissolveOne(remaining, finishAll);
+                }
+            });
+            anim.start();
+        } catch (Throwable t) {
+            finishDissolveOne(remaining, finishAll);
+        }
+    }
+
+    /** 自动刷新 + 关闭"显示已出库"：对消失的待取件卡片播放颗粒化渐隐，全部播完后重建列表 */
+    private void playDissolveAndRender(List<String> goneBillCodes) {
+        if (goneBillCodes == null || goneBillCodes.isEmpty() || !isViewReady) {
+            renderList();
+            return;
+        }
+        final List<View> cards = findCardViewsByBillCodes(goneBillCodes);
+        final int animCount = Math.min(cards.size(), 6); // 同时最多动画 6 张，其余随 renderList 直接移除
+        if (animCount <= 0) {
+            renderList();
+            return;
+        }
+        final int gen = renderGeneration;
+        final int[] remaining = {animCount};
+        final Runnable finishAll = () -> {
+            // 只在没有更新的渲染发生时重建列表，并保持差分渲染模式（避免整表重建跳动）
+            if (gen == renderGeneration && isViewReady) {
+                boolean wasAuto = isAutoRefresh;
+                isAutoRefresh = true;
+                renderList();
+                isAutoRefresh = wasAuto;
+            }
+        };
+        for (int i = 0; i < animCount; i++) {
+            final View card = cards.get(i);
+            mainHandler.post(() -> {
+                if (gen != renderGeneration || !isViewReady || card.getParent() == null) {
+                    finishDissolveOne(remaining, finishAll);
+                    return;
+                }
+                // 主线程截位图（视图只能主线程绘制），后台线程生成帧序列
+                final android.graphics.Bitmap bmp = captureCardBitmap(card);
+                new Thread(() -> {
+                    try {
+                        final List<android.graphics.Bitmap> frames =
+                                (bmp != null) ? DissolveView.buildFrames(bmp) : null;
+                        if (bmp != null) bmp.recycle();
+                        mainHandler.post(() -> {
+                            if (gen != renderGeneration || !isViewReady || card.getParent() == null
+                                    || frames == null || frames.isEmpty()) {
+                                finishDissolveOne(remaining, finishAll);
+                                return;
+                            }
+                            startDissolveAnimation(card, frames, gen, remaining, finishAll);
+                        });
+                    } catch (Throwable t) {
+                        mainHandler.post(() -> finishDissolveOne(remaining, finishAll));
+                    }
+                }).start();
+            });
+        }
     }
 
     // ===== Loading =====
@@ -1461,6 +1736,7 @@ public class QueryFragment extends Fragment {
 
     private void renderList() {
         if (!isViewReady || resultsContainer == null || tvNoResults == null || tvResultCount == null) return;
+        renderGeneration++;
 
         try {
             tvNoResults.setVisibility(View.GONE);
@@ -2568,6 +2844,7 @@ public class QueryFragment extends Fragment {
     private void renderHistory() {
         if (historyPanel == null) return;
         historyPanel.removeAllViews();
+        armedHistoryView = null; // 重渲染后所有 chip 恢复正常态（待命态不跨渲染保留）
         List<JSONObject> list = loadQueryHistory();
         if (list.isEmpty()) {
             historyPanel.setVisibility(View.GONE);
@@ -2624,8 +2901,6 @@ public class QueryFragment extends Fragment {
             int chipPadH = res.getDimensionPixelSize(R.dimen.spacing_lg);
             int chipPadV = res.getDimensionPixelSize(R.dimen.spacing_sm);
             int margin = res.getDimensionPixelSize(R.dimen.spacing_md);
-            int strokePx = Math.max(1, res.getDimensionPixelSize(R.dimen.divider_height));
-            int borderColor = getResources().getColor(R.color.hair2, ctx.getTheme());
 
             int shown = 0;
             for (JSONObject o : list) {
@@ -2635,35 +2910,80 @@ public class QueryFragment extends Fragment {
                 if (v.isEmpty()) continue;
                 String prefix = "phoneTail".equals(t) ? "手机尾号 " : ("pickupCode".equals(t) ? "取件码 " : "运单号 ");
 
-                TextView chip = new TextView(ctx);
-                chip.setText(prefix + v);
-                chip.setTextColor(ink2);
-                chip.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.txt_sm));
-                chip.setSingleLine(true);
-                chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                chip.setMaxWidth(res.getDimensionPixelSize(R.dimen.chip_max_width));
-                // 圆角轮廓
-                android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-                bg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
-                bg.setCornerRadius(res.getDimensionPixelSize(R.dimen.radius_md));
-                bg.setColor(0x00000000);
-                bg.setStroke(strokePx, borderColor);
-                chip.setBackground(bg);
-                chip.setPadding(chipPadH, chipPadV, chipPadH, chipPadV);
+                // 每张 chip 升级为横向容器：文字 + 右侧"×"删除按钮（默认隐藏，长按后显示）
+                LinearLayout container = new LinearLayout(ctx);
+                container.setOrientation(LinearLayout.HORIZONTAL);
+                container.setGravity(Gravity.CENTER_VERTICAL);
+                container.setClickable(true);
+                container.setLongClickable(true);
+                container.setPadding(chipPadH, chipPadV, chipPadH, chipPadV);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 lp.rightMargin = margin;
-                chip.setLayoutParams(lp);
-                chip.setClickable(true);
-                chip.setOnClickListener(vv -> {
+                container.setLayoutParams(lp);
+                applyHistoryChipArmedStyle(container, false);
+
+                TextView chipText = new TextView(ctx);
+                chipText.setText(prefix + v);
+                chipText.setTextColor(ink2);
+                chipText.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.txt_sm));
+                chipText.setSingleLine(true);
+                chipText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                chipText.setMaxWidth(res.getDimensionPixelSize(R.dimen.chip_max_width));
+                container.addView(chipText);
+
+                // "×"删除按钮：红色圆形，长按进入待命态后显示
+                TextView deleteBtn = new TextView(ctx);
+                deleteBtn.setText("×");
+                deleteBtn.setTextColor(0xFFFFFFFF);
+                deleteBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                deleteBtn.setGravity(Gravity.CENTER);
+                deleteBtn.setVisibility(View.GONE);
+                android.graphics.drawable.GradientDrawable circle = new android.graphics.drawable.GradientDrawable();
+                circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+                circle.setColor(getResources().getColor(R.color.danger, ctx.getTheme()));
+                deleteBtn.setBackground(circle);
+                int delSize = (int) (18 * ctx.getResources().getDisplayMetrics().density + 0.5f);
+                LinearLayout.LayoutParams delLp = new LinearLayout.LayoutParams(delSize, delSize);
+                delLp.leftMargin = (int) (6 * ctx.getResources().getDisplayMetrics().density + 0.5f);
+                delLp.gravity = Gravity.CENTER_VERTICAL;
+                deleteBtn.setLayoutParams(delLp);
+                container.addView(deleteBtn);
+
+                // 点击：待命态下只取消待命、不触发查询；正常态回填+查询
+                container.setOnClickListener(vv -> {
                     try {
+                        if (armedHistoryView != null) {
+                            disarmHistoryDelete();
+                            return;
+                        }
                         if (etBillCode != null) etBillCode.setText(v);
                         setSearchType(t);
                         hideHistoryPanel();
                         performQuery(true);
                     } catch (Throwable ignore) {}
                 });
-                chipRow.addView(chip);
+                // 长按：进入删除待命态（仅该 chip 显示"×"、边框变红）
+                container.setOnLongClickListener(vv -> {
+                    try {
+                        disarmHistoryDelete();
+                        armedHistoryView = container;
+                        applyHistoryChipArmedStyle(container, true);
+                    } catch (Throwable ignore) {}
+                    return true;
+                });
+                // 点"×"：删除该条记录，Toast 提示，面板保持展开（删空自动隐藏）
+                deleteBtn.setOnClickListener(vv -> {
+                    try {
+                        if (deleteQueryHistory(v, t)) {
+                            safeToast("已删除");
+                        } else {
+                            safeToast("删除失败");
+                        }
+                        renderHistory();
+                    } catch (Throwable ignore) {}
+                });
+                chipRow.addView(container);
                 shown++;
             }
         } catch (Throwable ignore) {}
@@ -2671,7 +2991,53 @@ public class QueryFragment extends Fragment {
 
     /** 收起查询历史面板 */
     private void hideHistoryPanel() {
+        armedHistoryView = null; // 面板收起时清除删除待命态
         if (historyPanel != null) historyPanel.setVisibility(View.GONE);
+    }
+
+    /** 设置/恢复历史 chip 的样式：armed=true 红色边框+"×"显示；false 恢复默认样式 */
+    private void applyHistoryChipArmedStyle(View container, boolean armed) {
+        if (container == null || getContext() == null) return;
+        try {
+            android.content.res.Resources res = getResources();
+            int strokePx = Math.max(1, res.getDimensionPixelSize(R.dimen.divider_height));
+            int corner = res.getDimensionPixelSize(R.dimen.radius_md);
+            int border = getResources().getColor(R.color.hair2, requireContext().getTheme());
+            int danger = getResources().getColor(R.color.danger, requireContext().getTheme());
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+            bg.setCornerRadius(corner);
+            bg.setColor(0x00000000);
+            bg.setStroke(strokePx, armed ? danger : border);
+            container.setBackground(bg);
+            if (container instanceof ViewGroup) {
+                ViewGroup vg = (ViewGroup) container;
+                if (vg.getChildCount() > 1) {
+                    vg.getChildAt(1).setVisibility(armed ? View.VISIBLE : View.GONE);
+                }
+            }
+        } catch (Throwable ignore) {}
+    }
+
+    /** 取消历史 chip 的删除待命态 */
+    private void disarmHistoryDelete() {
+        if (armedHistoryView != null) {
+            applyHistoryChipArmedStyle(armedHistoryView, false);
+            armedHistoryView = null;
+        }
+    }
+
+    /** 从历史记录中删除"值+类型"匹配的一条；返回是否删除成功 */
+    private boolean deleteQueryHistory(String value, String type) {
+        try {
+            List<JSONObject> list = loadQueryHistory();
+            boolean removed = list.removeIf(o -> value.equals(o.optString("v", "")) && type.equals(o.optString("t", "")));
+            if (!removed) return false;
+            saveQueryHistory(list);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private boolean isCardPending(View card) {
