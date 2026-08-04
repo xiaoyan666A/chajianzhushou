@@ -144,6 +144,7 @@ public class SettingsFragment extends Fragment {
     private View cardTts;
     private View cardLogs;
     private View cardServerConnect;
+    private View cardMultiTail;
     private View cardTimeoutMark;
     private View cardUiDisplay;
     private View cardCacheMgmt;
@@ -172,6 +173,9 @@ public class SettingsFragment extends Fragment {
 
     // Views - 界面显示（拍照出库按钮）
     private SwitchCompat switchPicOutboundEnabled;
+
+    // Views - 输入框连续输入
+    private SwitchCompat switchMultiTailEnabled;
 
     // Views - 界面显示（竖向排列每行卡片数）
     private SwitchCompat switchGridManualColumns;
@@ -357,6 +361,16 @@ public class SettingsFragment extends Fragment {
                 try { LogRecorder.info(requireContext(), "Settings", "拍照出库按钮开关", String.valueOf(isChecked)); } catch (Exception ignore) {}
             });
         }
+
+        switchMultiTailEnabled = view.findViewById(R.id.switch_multi_tail_enabled);
+        if (switchMultiTailEnabled != null) {
+            switchMultiTailEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isLoadingSettings) return;
+                settingsStore.set(SettingsStore.KEY_MULTI_TAIL_ENABLED, isChecked);
+                Log.d(TAG, "输入框连续输入开关: " + isChecked);
+                try { LogRecorder.info(requireContext(), "Settings", "输入框连续输入开关", String.valueOf(isChecked)); } catch (Exception ignore) {}
+            });
+        }
         if (spinnerUiFontScale != null) {
             ArrayAdapter<String> fontAdapter = new ArrayAdapter<>(
                     requireContext(), R.layout.spinner_item, UI_FONT_SCALE_LABELS);
@@ -534,6 +548,7 @@ public class SettingsFragment extends Fragment {
         cardTts = view.findViewById(R.id.card_tts);
         cardLogs = view.findViewById(R.id.card_logs);
         cardServerConnect = view.findViewById(R.id.card_server_connect);
+        cardMultiTail = view.findViewById(R.id.card_multi_tail);
         cardTimeoutMark = view.findViewById(R.id.card_timeout_mark);
         cardUiDisplay = view.findViewById(R.id.card_ui_display);
         cardCacheMgmt = view.findViewById(R.id.card_cache_mgmt);
@@ -875,6 +890,7 @@ public class SettingsFragment extends Fragment {
         cardTts = null;
         cardLogs = null;
         cardServerConnect = null;
+        cardMultiTail = null;
         cardTimeoutMark = null;
         cardUiDisplay = null;
         cardCacheMgmt = null;
@@ -906,6 +922,7 @@ public class SettingsFragment extends Fragment {
         switchTimeoutMarkEnabled = null;
         spinnerUiFontScale = null;
         switchPicOutboundEnabled = null;
+        switchMultiTailEnabled = null;
         switchGridManualColumns = null;
         spinnerGridManualColumnsPortrait = null;
         spinnerGridManualColumnsLandscape = null;
@@ -1263,6 +1280,9 @@ public class SettingsFragment extends Fragment {
             if (switchPicOutboundEnabled != null) {
                 switchPicOutboundEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_PIC_OUTBOUND_ENABLED, false));
             }
+            if (switchMultiTailEnabled != null) {
+                switchMultiTailEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_MULTI_TAIL_ENABLED, false));
+            }
             if (switchCacheMgmtEnabled != null) {
                 switchCacheMgmtEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_CACHE_MGMT_ENABLED, true));
             }
@@ -1364,6 +1384,7 @@ public class SettingsFragment extends Fragment {
         setContentVisible(cardTimeoutMark, on);
         setContentVisible(cardUiDisplay, on);
         setContentVisible(cardCacheMgmt, on);
+        setContentVisible(cardMultiTail, on);
     }
 
     /** 打开进阶功能时弹出解锁码输入框，输入 admin 通过后才真正开启 */

@@ -31,6 +31,7 @@ public class SettingsStore {
     public static final String KEY_GRID_MANUAL_COLUMNS_PORTRAIT = "grid_manual_columns_portrait";
     public static final String KEY_GRID_MANUAL_COLUMNS_LANDSCAPE = "grid_manual_columns_landscape";
     public static final String KEY_PIC_OUTBOUND_ENABLED = "pic_outbound_enabled";
+    public static final String KEY_MULTI_TAIL_ENABLED = "multi_tail_enabled";
     public static final String KEY_IMAGE_CACHE_DAYS = "image_cache_days";
     public static final String KEY_LOG_RETAIN_DAYS = "log_retain_days";
     public static final String KEY_MIMO_API_KEY = "mimo_api_key";

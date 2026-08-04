@@ -127,20 +127,48 @@
                 android:layout_marginRight="@dimen/card_margin_bottom"
                 android:importantForAccessibility="no" />
 
-            <EditText
-                android:id="@+id/et_bill_code"
+            <!-- 连续输入模式：标签流 + 尾部输入框（默认隐藏，设置开关开启后显示） -->
+            <LinearLayout
+                android:id="@+id/tail_search_wrap"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:background="@null"
-                android:textColorHint="@color/muted"
-                android:textColor="@color/ink"
-                android:textSize="@dimen/txt_md"
-                android:textCursorDrawable="@null"
-                android:hint="请输入手机尾号"
-                android:singleLine="true"
-                android:imeOptions="actionSearch"
-                android:paddingHorizontal="@dimen/spacing_sm" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <HorizontalScrollView
+                    android:id="@+id/tail_tags_scroll"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/tail_tags_container"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingVertical="0dp" />
+                </HorizontalScrollView>
+
+                <EditText
+                    android:id="@+id/et_bill_code"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:minWidth="96dp"
+                    android:background="@null"
+                    android:textColorHint="@color/muted"
+                    android:textColor="@color/ink"
+                    android:textSize="@dimen/txt_md"
+                    android:textCursorDrawable="@null"
+                    android:hint="请输入手机尾号"
+                    android:singleLine="true"
+                    android:imeOptions="actionSearch"
+                    android:paddingHorizontal="@dimen/spacing_sm" />
+            </LinearLayout>
 
             <!-- 清除按钮（叉叉图标）—— 放在麦克风左边 -->
             <Button

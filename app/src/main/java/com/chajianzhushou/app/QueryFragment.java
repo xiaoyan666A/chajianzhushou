@@ -195,6 +195,13 @@ public class QueryFragment extends Fragment {
     private String picOutboundPendingBillCode;
     private JSONObject picOutboundPendingItem;
 
+    // 输入框连续输入（多手机尾号标签模式）
+    private LinearLayout tailTagsContainer;
+    private android.widget.HorizontalScrollView tailTagsScroll;
+    private final java.util.List<String> tailTags = new ArrayList<>();
+    private String currentTailTag;
+    private boolean multiTailEnabled = false;
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
@@ -203,6 +210,22 @@ public class QueryFragment extends Fragment {
         // Find all views
         scrollView = view.findViewById(R.id.scroll_query);
         etBillCode = view.findViewById(R.id.et_bill_code);
+        tailTagsContainer = view.findViewById(R.id.tail_tags_container);
+        tailTagsScroll = view.findViewById(R.id.tail_tags_scroll);
+        // 点标签区空白（标签尾部）也能聚焦输入框并弹出输入法
+        if (tailTagsScroll != null) {
+            tailTagsScroll.setOnClickListener(v -> {
+                if (etBillCode != null) {
+                    etBillCode.requestFocus();
+                    try {
+                        android.view.inputmethod.InputMethodManager imm =
+                                (android.view.inputmethod.InputMethodManager) requireContext()
+                                        .getSystemService(Context.INPUT_METHOD_SERVICE);
+                        if (imm != null) imm.showSoftInput(etBillCode, 0);
+                    } catch (Exception ignore) {}
+                }
+            });
+        }
         btnQuery = view.findViewById(R.id.btn_query);
         btnClear = view.findViewById(R.id.btn_clear);
         btnTypePhone = view.findViewById(R.id.btn_type_phone);
@@ -405,6 +428,12 @@ public class QueryFragment extends Fragment {
 
         // Clear button
         btnClear.setOnClickListener(v -> {
+            if (multiTailEnabled) {
+                tailTags.clear();
+                currentTailTag = null;
+                renderTailTags();
+                stopAutoRefresh();
+            }
             if (etBillCode != null) {
                 etBillCode.setText("");
                 etBillCode.requestFocus();
@@ -423,6 +452,19 @@ public class QueryFragment extends Fragment {
             public void afterTextChanged(Editable s) {
                 if (serverConnectEnabled && syncQueryEnabled && syncClient != null) {
                     syncClient.sendInputSync(s == null ? "" : s.toString());
+                }
+                // 连续输入模式：每输满4位数字自动转为标签，并清空输入框继续下一个
+                if (isTailModeUsable() && s != null) {
+                    String digits = s.toString().replaceAll("\\D", "");
+                    int len = digits.length();
+                    if (len >= 4) {
+                        // 支持逐位输入与粘贴/扫码枪连续输入：每 4 位切一个标签，不足 4 位保留继续输入
+                        int consumed = (len / 4) * 4;
+                        for (int i = 0; i < consumed; i += 4) {
+                            addTailTag(digits.substring(i, i + 4));
+                        }
+                        etBillCode.setText(digits.substring(consumed));
+                    }
                 }
             }
         });
@@ -551,6 +593,11 @@ public class QueryFragment extends Fragment {
     @Override
     public void onHiddenChanged(boolean hidden) {
         super.onHiddenChanged(hidden);
+        // Fragment 用 show/hide 切换时 onResume 不会再次触发；
+        // 从设置页切回本页时在此同步开关状态（含"输入框连续输入"）
+        if (!hidden && isViewReady) {
+            refreshSettingsFromPrefs();
+        }
         // 从设置页切回查件页：重新按最新"手动每行卡片数"设置渲染网格
         if (!hidden && isViewReady && isGridView
                 && currentPackages != null && currentPackages.size() > 0) {
@@ -579,6 +626,11 @@ public class QueryFragment extends Fragment {
         try {
             SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
         updateVoiceButtonState(prefs.getBoolean("asr_enabled", false));
+            boolean multiTail = prefs.getBoolean("multi_tail_enabled", false);
+            if (multiTail != multiTailEnabled) {
+                multiTailEnabled = multiTail;
+                applyMultiTailMode();
+            }
             boolean wasConnected = serverConnectEnabled;
             serverConnectEnabled = prefs.getBoolean("server_connect_enabled", false);
             syncQueryEnabled = prefs.getBoolean("sync_query_enabled", true);
@@ -744,8 +796,10 @@ public class QueryFragment extends Fragment {
 
         stopAutoRefresh();
         if (packageCardFactory != null) {
-            packageCardFactory.stopAllBlink();
-            packageCardFactory = null;
+        packageCardFactory.stopAllBlink();
+        packageCardFactory = null;
+        tailTagsContainer = null;
+        tailTagsScroll = null;
         }
 
         if (ttsHelper != null) {
@@ -781,6 +835,102 @@ public class QueryFragment extends Fragment {
     // ===== Helpers =====
 
     // ===== 拍照出库（仅待出库包裹卡片上的"拍照出库"按钮触发） =====
+
+    // ===== 输入框连续输入（多手机尾号标签） =====
+
+    /** 连续输入是否可用：开关开启 且 查询类型为手机尾号 */
+    private boolean isTailModeUsable() {
+        return multiTailEnabled && "phoneTail".equals(searchType);
+    }
+
+    /** 渲染所有尾号标签（当前查询标签高亮） */
+    private void renderTailTags() {
+        if (tailTagsContainer == null || !isViewReady) return;
+        // 没有标签时隐藏标签区，让输入框占满整行（hint 靠左、整行可点）
+        if (tailTagsScroll != null) {
+            tailTagsScroll.setVisibility((isTailModeUsable() && !tailTags.isEmpty()) ? View.VISIBLE : View.GONE);
+        }
+        tailTagsContainer.removeAllViews();
+        for (final String tag : tailTags) {
+            TextView chip = new TextView(requireContext());
+            chip.setText(tag);
+            chip.setTextSize(13f);
+            chip.setTypeface(Typeface.DEFAULT_BOLD);
+            boolean current = tag.equals(currentTailTag);
+            chip.setTextColor(getResources().getColor(current ? R.color.accent : R.color.ink2, requireContext().getTheme()));
+            chip.setBackgroundResource(current ? R.drawable.bg_status_pending : R.drawable.bg_btn_back);
+            chip.setPadding(dp(8), dp(3), dp(8), dp(3));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.rightMargin = dp(6);
+            chip.setLayoutParams(lp);
+            // 点击：切换为当前查询标签并立即查询（位置不变，只改变查询优先级）
+            chip.setOnClickListener(v -> switchCurrentTailTag(tag));
+            // 长按：删除该标签
+            chip.setOnLongClickListener(v -> {
+                removeTailTag(tag);
+                return true;
+            });
+            tailTagsContainer.addView(chip);
+        }
+        if (tailTagsScroll != null) {
+            tailTagsScroll.post(() -> {
+                if (tailTagsScroll != null) tailTagsScroll.fullScroll(View.FOCUS_RIGHT);
+            });
+        }
+    }
+
+    /** 添加尾号标签（满4位数字自动调用） */
+    private void addTailTag(String tail) {
+        if (tail == null || tail.length() != 4 || !tail.matches("\\d{4}")) return;
+        if (tailTags.contains(tail)) return;
+        tailTags.add(tail);
+        if (currentTailTag == null) currentTailTag = tail;
+        renderTailTags();
+    }
+
+    /** 删除尾号标签（长按）；若删除的是当前查询标签且有剩余，则自动查询下一个 */
+    private void removeTailTag(String tail) {
+        boolean wasCurrent = tail.equals(currentTailTag);
+        tailTags.remove(tail);
+        if (wasCurrent) {
+            // 先更新当前标签，再渲染，保证下一个标签正确高亮
+            currentTailTag = tailTags.isEmpty() ? null : tailTags.get(0);
+        }
+        renderTailTags();
+        if (wasCurrent && currentTailTag != null && isViewReady) {
+            performQuery(false, false, currentTailTag);
+        }
+        if (tailTags.isEmpty()) {
+            stopAutoRefresh();
+        }
+    }
+
+    /** 点击标签：立即切换当前查询标签并查询（标签位置不变，仅改变查询优先级） */
+    private void switchCurrentTailTag(String tail) {
+        if (!tailTags.contains(tail)) return;
+        // 点击切换：自动删除切换前正在查询的那个标签
+        if (currentTailTag != null && !currentTailTag.equals(tail)) {
+            tailTags.remove(currentTailTag);
+        }
+        currentTailTag = tail;
+        renderTailTags();
+        if (isViewReady) performQuery(false, false, tail);
+    }
+
+    /** 根据开关状态显示/隐藏标签容器；关闭时清空标签 */
+    private void applyMultiTailMode() {
+        if (!isTailModeUsable()) {
+            tailTags.clear();
+            currentTailTag = null;
+        }
+        // 可见性由 renderTailTags 统一决定（无标签时隐藏标签区，输入框占满整行）
+        renderTailTags();
+    }
+
+    private int dp(int v) {
+        return (int) (getResources().getDisplayMetrics().density * v + 0.5f);
+    }
 
     /** 点击"拍照出库"：打开系统相机拍照 */
     private void onPicOutboundClick(String billCode, JSONObject item) {
@@ -927,6 +1077,8 @@ public class QueryFragment extends Fragment {
         }
         // 注意：切换类型不停止自动刷新循环，下一轮自动刷新会按新类型继续查询
         updateTypeButtons();
+        // 连续输入只支持手机尾号：切换类型后刷新标签区可用性
+        applyMultiTailMode();
     }
 
     private void updateTypeButtons() {
@@ -1124,7 +1276,14 @@ public class QueryFragment extends Fragment {
         __tRespArrived = 0;
         __queryMode = "";
 
-        String billCode = (explicitValue != null) ? explicitValue : etBillCode.getText().toString().trim();
+        // 连续输入模式：查询当前标签尾号（点击标签/自动切换会传入 explicitValue）
+        String billCode;
+        if (isTailModeUsable() && !tailTags.isEmpty()) {
+            if (currentTailTag == null) currentTailTag = tailTags.get(0);
+            billCode = (explicitValue != null) ? explicitValue : currentTailTag;
+        } else {
+            billCode = (explicitValue != null) ? explicitValue : etBillCode.getText().toString().trim();
+        }
         if (billCode.isEmpty()) {
             isQuerying = false;
             if (!isAuto) safeToast("请输入查询内容");
@@ -1391,11 +1550,17 @@ public class QueryFragment extends Fragment {
 
         // Auto-refresh: 根据设置的间隔自动刷新查询，直到没有待取件(pending)包裹为止
         int interval = getAutoRefreshSeconds();
-        if (interval > 0) {
-            if (pendingCount > 0) {
+        if (pendingCount > 0) {
+            if (interval > 0) {
                 startAutoRefreshLoop();
+            }
+        } else {
+            stopAutoRefresh();
+            if (isTailModeUsable() && !tailTags.isEmpty()) {
+                // 连续输入模式：当前尾号已无待取件 → 停留，不自动切换下一个；
+                // 用户手动点击其他标签（chip）才会切换查询（switchCurrentTailTag）。
+                // 标签保留，便于用户查看/再次点击。
             } else {
-                stopAutoRefresh();
                 // 自动刷新后没有待取件了：自动清空输入框。
                 // 仅自动刷新场景生效，且输入框内容仍是本次查询值时才清（避免打断用户正在输入的新内容）。
                 if (isAuto && etBillCode != null) {
@@ -1405,8 +1570,6 @@ public class QueryFragment extends Fragment {
                     }
                 }
             }
-        } else {
-            stopAutoRefresh();
         }
 
         long _tRenderStart = System.currentTimeMillis();

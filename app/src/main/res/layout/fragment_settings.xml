@@ -1334,6 +1334,68 @@
         </LinearLayout>
 
 
+        <!-- ===== 输入框连续输入卡片（进阶功能控制） ===== -->
+        <LinearLayout
+            android:id="@+id/card_multi_tail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="输入框连续输入"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="输入框连续输入" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启后查件界面可连续输入多个手机尾号：每输4位自动变为标签，长按删除、点击切换查询；当前尾号无待取件后停留，点击其他标签才切换"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_multi_tail_enabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
+            </LinearLayout>
+        </LinearLayout>
+
         <!-- ===== 语音识别配置卡片 ===== -->
         <LinearLayout
             android:id="@+id/card_asr"

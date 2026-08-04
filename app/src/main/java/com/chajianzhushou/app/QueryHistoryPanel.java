@@ -110,6 +110,15 @@ public class QueryHistoryPanel {
         }
     }
 
+    /** 清空全部历史记录并刷新面板 */
+    public void clearAll() {
+        try {
+            prefs().edit().remove(PREFS_HISTORY).apply();
+        } catch (Throwable ignore) {}
+        armedHistoryView = null;
+        render();
+    }
+
     /** 渲染最近查询面板：点击记录自动回填输入框、选中对应类型并自动查询 */
     public void render() {
         if (panel == null) return;
@@ -148,14 +157,28 @@ public class QueryHistoryPanel {
             int padH = res.getDimensionPixelSize(R.dimen.spacing_lg);
             int padV = res.getDimensionPixelSize(R.dimen.spacing_lg);
 
-            // 面板标题
+            // 面板标题行：标题 + 右上角"清空历史记录"
+            LinearLayout headerRow = new LinearLayout(context);
+            headerRow.setOrientation(LinearLayout.HORIZONTAL);
+            headerRow.setGravity(Gravity.CENTER_VERTICAL);
+            headerRow.setPadding(padH, padV, padH, padV);
             TextView header = new TextView(context);
             header.setText("最近查询");
             header.setTextColor(muted);
             header.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.txt_sm));
             header.setTypeface(Typeface.DEFAULT_BOLD);
-            header.setPadding(padH, padV, padH, padV);
-            panel.addView(header);
+            headerRow.addView(header, new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            TextView clearBtn = new TextView(context);
+            clearBtn.setText("清空历史记录");
+            clearBtn.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.txt_xs));
+            clearBtn.setTextColor(context.getResources().getColor(R.color.accent, context.getTheme()));
+            clearBtn.setPadding(padH, 0, 0, 0);
+            clearBtn.setClickable(true);
+            clearBtn.setOnClickListener(v -> clearAll());
+            headerRow.addView(clearBtn);
+            panel.addView(headerRow);
 
             // 横向滚动容器：每条记录一个圆角轮廓 chip
             HorizontalScrollView hsv = new HorizontalScrollView(context);
@@ -177,7 +200,7 @@ public class QueryHistoryPanel {
                 final String v = o.optString("v", "");
                 final String t = o.optString("t", "");
                 if (v.isEmpty()) continue;
-                String prefix = "phoneTail".equals(t) ? "手机尾号 " : ("pickupCode".equals(t) ? "取件码 " : "运单号 ");
+        String prefix = "phoneTail".equals(t) ? "尾号 " : ("pickupCode".equals(t) ? "取件码 " : "单号 ");
 
                 // 每张 chip 升级为横向容器：文字 + 右侧"×"删除按钮（默认隐藏，长按后显示）
                 LinearLayout container = new LinearLayout(context);
