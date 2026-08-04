@@ -42,30 +42,8 @@ import okhttp3.Response;
 public class SettingsFragment extends Fragment {
 
     private static final String TAG = "SettingsFragment";
-    private static final String PREFS_NAME = "chajianzhushou_prefs";
-    private static final String KEY_AUTO_CLOSE_MINUTES = "auto_close_minutes";
-    private static final String KEY_AUTO_REFRESH = "auto_refresh_interval";
-    private static final String KEY_ASR_ENABLED = "asr_enabled";
-    private static final String KEY_SERVER_CONNECT = "server_connect_enabled";
-    private static final String KEY_SYNC_QUERY = "sync_query_enabled";
-    private static final String KEY_SYNC_TIMEOUT = "sync_timeout_enabled";
-    private static final String KEY_SYNC_SETTINGS = "sync_settings_enabled";
-    private static final String KEY_TTS_VOICE = "tts_voice";
-    private static final String KEY_TTS_STYLE = "tts_style";
-    private static final String KEY_TTS_CUSTOM_STYLE = "tts_custom_style";
-    private static final String KEY_TTS_SPEED = "tts_speed";
-    private static final String KEY_TTS_ENABLED = "tts_enabled";
-    private static final String KEY_LOGS_ENABLED = "logs_enabled";
-    private static final String KEY_TIMEOUT_MARK_DAYS = "timeout_mark_days";
-    private static final String KEY_TIMEOUT_MARK_ENABLED = "timeout_mark_enabled";
-    private static final String KEY_UI_FONT_SCALE = "ui_font_scale";
-    private static final String KEY_GRID_MANUAL_ENABLED = "grid_manual_columns_enabled";
-    private static final String KEY_GRID_MANUAL_COLUMNS_PORTRAIT = "grid_manual_columns_portrait";
-    private static final String KEY_GRID_MANUAL_COLUMNS_LANDSCAPE = "grid_manual_columns_landscape";
-    private static final String KEY_IMAGE_CACHE_DAYS = "image_cache_days";
     // 图片缓存过期天数选项（天）
     private static final int[] IMAGE_CACHE_DAYS_VALUES = {7, 14, 21, 30};
-    private static final String KEY_LOG_RETAIN_DAYS = "log_retain_days";
     // 日志保留天数选项（天）
     private static final int[] LOG_RETAIN_DAYS_VALUES = {7, 14, 30, 90};
     // 字号重建防抖：3 秒内最多重建一次，杜绝任何意外触发的无限重建循环
@@ -91,6 +69,7 @@ public class SettingsFragment extends Fragment {
     // State
     private boolean isViewReady = false;
     private ApiService apiService;
+    private SettingsStore settingsStore;
     private Handler mainHandler;
     private boolean serverConnectEnabled = false;
 
@@ -208,7 +187,7 @@ public class SettingsFragment extends Fragment {
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
                 if (isLoadingSettings) return;
-                savePref(prefKey, pos + 1);
+                settingsStore.set(prefKey, pos + 1);
                 Log.d(TAG, label + ": " + (pos + 1));
                 try { LogRecorder.info(requireContext(), "Settings", label, String.valueOf(pos + 1)); } catch (Exception ignore) {}
             }
@@ -228,6 +207,7 @@ public class SettingsFragment extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_settings, container, false);
+        settingsStore = new SettingsStore(requireContext());
 
         // Account views
         tvAvatar = view.findViewById(R.id.tv_avatar);
@@ -305,7 +285,7 @@ public class SettingsFragment extends Fragment {
         if (switchTimeoutMarkEnabled != null) {
             switchTimeoutMarkEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 if (isLoadingSettings) return;
-                savePref(KEY_TIMEOUT_MARK_ENABLED, isChecked);
+                settingsStore.set(SettingsStore.KEY_TIMEOUT_MARK_ENABLED, isChecked);
                 postSettings("timeoutMarkEnabled", isChecked);
                 Log.d(TAG, "显示超时件标注: " + isChecked);
                 try { LogRecorder.info(requireContext(), "Settings", "显示超时件标注", String.valueOf(isChecked)); } catch (Exception ignore) {}
@@ -325,7 +305,7 @@ public class SettingsFragment extends Fragment {
                 @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
                     if (isLoadingSettings) return;
                     int days = pos + 1;
-                    savePref(KEY_TIMEOUT_MARK_DAYS, days);
+                    settingsStore.set(SettingsStore.KEY_TIMEOUT_MARK_DAYS, days);
                     postSettings("timeoutMarkDays", days);
                     Log.d(TAG, "超时件标注天数: " + days);
                     try { LogRecorder.info(requireContext(), "Settings", "超时件标注天数", String.valueOf(days)); } catch (Exception ignore) {}
@@ -355,7 +335,7 @@ public class SettingsFragment extends Fragment {
                     // 选择的值与当前实际字号相同也忽略（杜绝任何情况下触发无限重建循环）
                     if (isLoadingSettings || !fontUserTouched[0]
                             || Math.abs(scale - MainActivity.sFontScale) < 0.001f) return;
-                    savePref(KEY_UI_FONT_SCALE, scale);
+                    settingsStore.set(SettingsStore.KEY_UI_FONT_SCALE, scale);
                     MainActivity.sFontScale = scale;
                     Log.d(TAG, "界面字号: " + UI_FONT_SCALE_LABELS[pos] + " (" + scale + ")");
                     try { LogRecorder.info(requireContext(), "Settings", "界面字号", UI_FONT_SCALE_LABELS[pos]); } catch (Exception ignore) {}
@@ -379,12 +359,12 @@ public class SettingsFragment extends Fragment {
         switchGridManualColumns = view.findViewById(R.id.switch_grid_manual_columns);
         spinnerGridManualColumnsPortrait = view.findViewById(R.id.spinner_grid_manual_columns_portrait);
         spinnerGridManualColumnsLandscape = view.findViewById(R.id.spinner_grid_manual_columns_landscape);
-        bindGridColumnsSpinner(spinnerGridManualColumnsPortrait, KEY_GRID_MANUAL_COLUMNS_PORTRAIT, "竖屏每行卡片数");
-        bindGridColumnsSpinner(spinnerGridManualColumnsLandscape, KEY_GRID_MANUAL_COLUMNS_LANDSCAPE, "横屏每行卡片数");
+        bindGridColumnsSpinner(spinnerGridManualColumnsPortrait, SettingsStore.KEY_GRID_MANUAL_COLUMNS_PORTRAIT, "竖屏每行卡片数");
+        bindGridColumnsSpinner(spinnerGridManualColumnsLandscape, SettingsStore.KEY_GRID_MANUAL_COLUMNS_LANDSCAPE, "横屏每行卡片数");
         if (switchGridManualColumns != null) {
             switchGridManualColumns.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 if (isLoadingSettings) return;
-                savePref(KEY_GRID_MANUAL_ENABLED, isChecked);
+                settingsStore.set(SettingsStore.KEY_GRID_MANUAL_ENABLED, isChecked);
                 if (spinnerGridManualColumnsPortrait != null) {
                     spinnerGridManualColumnsPortrait.setEnabled(isChecked);
                 }
@@ -409,7 +389,7 @@ public class SettingsFragment extends Fragment {
                 @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
                     if (isLoadingSettings) return;
                     int days = IMAGE_CACHE_DAYS_VALUES[Math.min(pos, IMAGE_CACHE_DAYS_VALUES.length - 1)];
-                    savePref(KEY_IMAGE_CACHE_DAYS, days);
+                    settingsStore.set(SettingsStore.KEY_IMAGE_CACHE_DAYS, days);
                     Log.d(TAG, "图片缓存过期天数: " + days);
                     try { LogRecorder.info(requireContext(), "Settings", "图片缓存过期天数", days + " 天"); } catch (Exception ignore) {}
                 }
@@ -430,7 +410,7 @@ public class SettingsFragment extends Fragment {
                 @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
                     if (isLoadingSettings) return;
                     int days = LOG_RETAIN_DAYS_VALUES[Math.min(pos, LOG_RETAIN_DAYS_VALUES.length - 1)];
-                    savePref(KEY_LOG_RETAIN_DAYS, days);
+                    settingsStore.set(SettingsStore.KEY_LOG_RETAIN_DAYS, days);
                     Log.d(TAG, "日志保留天数: " + days);
                     try { LogRecorder.info(requireContext(), "Settings", "日志保留天数", days + " 天"); } catch (Exception ignore) {}
                 }
@@ -481,7 +461,7 @@ public class SettingsFragment extends Fragment {
         if (switchAsrEnabled != null) {
             switchAsrEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 if (isLoadingSettings) return;
-                savePref(KEY_ASR_ENABLED, isChecked);
+                settingsStore.set(SettingsStore.KEY_ASR_ENABLED, isChecked);
                 postSettings("asrEnabled", isChecked);
             });
         }
@@ -490,7 +470,7 @@ public class SettingsFragment extends Fragment {
         if (switchTtsEnabled != null) {
             switchTtsEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 if (isLoadingSettings) return;
-                savePref(KEY_TTS_ENABLED, isChecked);
+                settingsStore.set(SettingsStore.KEY_TTS_ENABLED, isChecked);
                 postSettings("ttsEnabled", isChecked);
                 if (!isChecked && ttsHelper != null) ttsHelper.stop();
             });
@@ -500,7 +480,7 @@ public class SettingsFragment extends Fragment {
         if (switchLogsEnabled != null) {
             switchLogsEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 if (isLoadingSettings) return;
-                savePref(KEY_LOGS_ENABLED, isChecked);
+                settingsStore.set(SettingsStore.KEY_LOGS_ENABLED, isChecked);
             });
         }
 
@@ -522,7 +502,7 @@ public class SettingsFragment extends Fragment {
                 serverConnectEnabled = isChecked;
                 Log.d(TAG, "服务器连接开关: " + isChecked);
                 LogRecorder.info(requireContext(), "Settings", "服务器连接开关", String.valueOf(isChecked));
-                savePref(KEY_SERVER_CONNECT, isChecked);
+                settingsStore.set(SettingsStore.KEY_SERVER_CONNECT, isChecked);
                 updateSyncSubSwitches(isChecked);
                 if (isChecked) {
                     loadAccountInfo();
@@ -534,19 +514,19 @@ public class SettingsFragment extends Fragment {
         if (switchSyncQuery != null) {
             switchSyncQuery.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 if (isLoadingSettings) return;
-                savePref(KEY_SYNC_QUERY, isChecked);
+                settingsStore.set(SettingsStore.KEY_SYNC_QUERY, isChecked);
             });
         }
         if (switchSyncTimeout != null) {
             switchSyncTimeout.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 if (isLoadingSettings) return;
-                savePref(KEY_SYNC_TIMEOUT, isChecked);
+                settingsStore.set(SettingsStore.KEY_SYNC_TIMEOUT, isChecked);
             });
         }
         if (switchSyncSettings != null) {
             switchSyncSettings.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 if (isLoadingSettings) return;
-                savePref(KEY_SYNC_SETTINGS, isChecked);
+                settingsStore.set(SettingsStore.KEY_SYNC_SETTINGS, isChecked);
             });
         }
 
@@ -559,7 +539,7 @@ public class SettingsFragment extends Fragment {
             spinnerTtsVoice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
                     if (isLoadingSettings) return;
-                    savePref(KEY_TTS_VOICE, pos);
+                    settingsStore.set(SettingsStore.KEY_TTS_VOICE, pos);
                 }
                 @Override public void onNothingSelected(AdapterView<?> parent) {}
             });
@@ -574,7 +554,7 @@ public class SettingsFragment extends Fragment {
             spinnerTtsStyle.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
                     if (isLoadingSettings) return;
-                    savePref(KEY_TTS_STYLE, pos);
+                    settingsStore.set(SettingsStore.KEY_TTS_STYLE, pos);
                 }
                 @Override public void onNothingSelected(AdapterView<?> parent) {}
             });
@@ -588,7 +568,7 @@ public class SettingsFragment extends Fragment {
                     if (tvTtsSpeedLabel != null) {
                         tvTtsSpeedLabel.setText(String.format("%.1f", speed));
                     }
-                    if (fromUser) savePref(KEY_TTS_SPEED, (int)(speed * 10));
+                    if (fromUser) settingsStore.set(SettingsStore.KEY_TTS_SPEED, (int)(speed * 10));
                 }
                 @Override public void onStartTrackingTouch(SeekBar seekBar) {}
                 @Override public void onStopTrackingTouch(SeekBar seekBar) {}
@@ -630,8 +610,8 @@ public class SettingsFragment extends Fragment {
             // Restore saved position from SharedPreferences
             int savedSeconds = 0;
             try {
-                SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-                savedSeconds = prefs.getInt(KEY_AUTO_REFRESH, 0);
+                SharedPreferences prefs = settingsStore.prefs();
+                savedSeconds = prefs.getInt(SettingsStore.KEY_AUTO_REFRESH, 0);
             } catch (Exception ignore) {}
             int restorePos = AUTO_REFRESH_VALUES.length - 1; // default: 关闭
             for (int i = 0; i < AUTO_REFRESH_VALUES.length; i++) {
@@ -643,7 +623,7 @@ public class SettingsFragment extends Fragment {
                 @Override public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                     if (isLoadingSettings) return;
                     int seconds = (pos < AUTO_REFRESH_VALUES.length) ? AUTO_REFRESH_VALUES[pos] : 0;
-                    savePref(KEY_AUTO_REFRESH, seconds);
+                    settingsStore.set(SettingsStore.KEY_AUTO_REFRESH, seconds);
                     postSettings("autoRefreshInterval", seconds);
                 }
                 @Override public void onNothingSelected(AdapterView<?> parent) {}
@@ -653,7 +633,7 @@ public class SettingsFragment extends Fragment {
         // ---- Mimo API Key ---- //
         String savedKey = "";
         try {
-            SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            SharedPreferences prefs = settingsStore.prefs();
             savedKey = prefs.getString("mimo_api_key", "");
             mimoKeyLocked = prefs.getBoolean("mimo_api_key_locked", false);
         } catch (Exception ignore) {}
@@ -678,7 +658,7 @@ public class SettingsFragment extends Fragment {
                 btnLockMimoKey.setText(mimoKeyLocked ? "🔒" : "🔓");
                 // Save key + locked state
                 try {
-                    SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+                    SharedPreferences prefs = settingsStore.prefs();
                     SharedPreferences.Editor editor = prefs.edit();
                     if (etMimoApiKey != null && !mimoKeyLocked) {
                         // only update text when unlocking (allow edit), but also save when locking to ensure latest value
@@ -1010,92 +990,62 @@ public class SettingsFragment extends Fragment {
         } catch (Exception ignore) {}
     }
 
-    // ===== Local Prefs =====
-
-    private void savePref(String key, boolean value) {
-        try {
-            SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            prefs.edit().putBoolean(key, value).commit();
-        } catch (Exception ignore) {}
-    }
-
-    private void savePref(String key, int value) {
-        try {
-            SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            prefs.edit().putInt(key, value).commit();
-        } catch (Exception ignore) {}
-    }
-
-    private void savePref(String key, String value) {
-        try {
-            SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            prefs.edit().putString(key, value).commit();
-        } catch (Exception ignore) {}
-    }
-
-    private void savePref(String key, float value) {
-        try {
-            SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            prefs.edit().putFloat(key, value).commit();
-        } catch (Exception ignore) {}
-    }
-
     private void loadLocalPrefs() {
         try {
-            SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            SharedPreferences prefs = settingsStore.prefs();
 
             // Server connect
-            serverConnectEnabled = prefs.getBoolean(KEY_SERVER_CONNECT, false);
+            serverConnectEnabled = prefs.getBoolean(SettingsStore.KEY_SERVER_CONNECT, false);
             if (switchServerConnect != null) switchServerConnect.setChecked(serverConnectEnabled);
             updateSyncSubSwitches(serverConnectEnabled);
 
             // Sync sub-switches
-            if (switchSyncQuery != null) switchSyncQuery.setChecked(prefs.getBoolean(KEY_SYNC_QUERY, true));
-            if (switchSyncTimeout != null) switchSyncTimeout.setChecked(prefs.getBoolean(KEY_SYNC_TIMEOUT, true));
-            if (switchSyncSettings != null) switchSyncSettings.setChecked(prefs.getBoolean(KEY_SYNC_SETTINGS, true));
+            if (switchSyncQuery != null) switchSyncQuery.setChecked(prefs.getBoolean(SettingsStore.KEY_SYNC_QUERY, true));
+            if (switchSyncTimeout != null) switchSyncTimeout.setChecked(prefs.getBoolean(SettingsStore.KEY_SYNC_TIMEOUT, true));
+            if (switchSyncSettings != null) switchSyncSettings.setChecked(prefs.getBoolean(SettingsStore.KEY_SYNC_SETTINGS, true));
 
             // ASR / TTS / Logs 开关
-            if (switchAsrEnabled != null) switchAsrEnabled.setChecked(prefs.getBoolean(KEY_ASR_ENABLED, true));
-            if (switchTtsEnabled != null) switchTtsEnabled.setChecked(prefs.getBoolean(KEY_TTS_ENABLED, true));
-            if (switchLogsEnabled != null) switchLogsEnabled.setChecked(prefs.getBoolean(KEY_LOGS_ENABLED, true));
+            if (switchAsrEnabled != null) switchAsrEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_ASR_ENABLED, true));
+            if (switchTtsEnabled != null) switchTtsEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_TTS_ENABLED, true));
+            if (switchLogsEnabled != null) switchLogsEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_LOGS_ENABLED, true));
 
             // TTS voice/spinner
-            if (spinnerTtsVoice != null) spinnerTtsVoice.setSelection(prefs.getInt(KEY_TTS_VOICE, 0));
-            if (spinnerTtsStyle != null) spinnerTtsStyle.setSelection(prefs.getInt(KEY_TTS_STYLE, 0));
-            if (etTtsCustomStyle != null) etTtsCustomStyle.setText(prefs.getString(KEY_TTS_CUSTOM_STYLE, ""));
+            if (spinnerTtsVoice != null) spinnerTtsVoice.setSelection(prefs.getInt(SettingsStore.KEY_TTS_VOICE, 0));
+            if (spinnerTtsStyle != null) spinnerTtsStyle.setSelection(prefs.getInt(SettingsStore.KEY_TTS_STYLE, 0));
+            if (etTtsCustomStyle != null) etTtsCustomStyle.setText(prefs.getString(SettingsStore.KEY_TTS_CUSTOM_STYLE, ""));
 
             // TTS speed
-            int speedVal = prefs.getInt(KEY_TTS_SPEED, 10);
+            int speedVal = prefs.getInt(SettingsStore.KEY_TTS_SPEED, 10);
             if (seekTtsSpeed != null) seekTtsSpeed.setProgress(speedVal - 5);
             if (tvTtsSpeedLabel != null) tvTtsSpeedLabel.setText(String.format("%.1f", speedVal / 10.0f));
 
             // Auto close minutes（以字符串存储，兼容 getSavedAutoCloseMinutes）
             double closeMin = 0.5;
             try {
-                String closeStr = prefs.getString(KEY_AUTO_CLOSE_MINUTES, null);
+                String closeStr = prefs.getString(SettingsStore.KEY_AUTO_CLOSE_MINUTES, null);
                 if (closeStr != null) closeMin = Double.parseDouble(closeStr);
             } catch (Exception ignore) {}
             applyAutoCloseMinutes(closeMin);
 
             // Auto refresh interval
-            int refreshSec = prefs.getInt(KEY_AUTO_REFRESH, 0);
+            int refreshSec = prefs.getInt(SettingsStore.KEY_AUTO_REFRESH, 0);
             applyAutoRefreshInterval(refreshSec);
 
             // 超时件标注天数（1~20，默认3）
             if (spinnerTimeoutMarkDays != null) {
-                int days = prefs.getInt(KEY_TIMEOUT_MARK_DAYS, 3);
+                int days = prefs.getInt(SettingsStore.KEY_TIMEOUT_MARK_DAYS, 3);
                 if (days < 1) days = 1;
                 if (days > 20) days = 20;
                 spinnerTimeoutMarkDays.setSelection(days - 1);
             }
             // 显示超时件标注总开关（默认开启）
             if (switchTimeoutMarkEnabled != null) {
-                switchTimeoutMarkEnabled.setChecked(prefs.getBoolean(KEY_TIMEOUT_MARK_ENABLED, true));
+                switchTimeoutMarkEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_TIMEOUT_MARK_ENABLED, true));
             }
 
             // 界面字号（小/中/大/特大）
             if (spinnerUiFontScale != null) {
-                float scale = prefs.getFloat(KEY_UI_FONT_SCALE, 1f);
+                float scale = prefs.getFloat(SettingsStore.KEY_UI_FONT_SCALE, 1f);
                 int best = 1;
                 float bestDiff = Float.MAX_VALUE;
                 for (int i = 0; i < UI_FONT_SCALE_VALUES.length; i++) {
@@ -1107,17 +1057,17 @@ public class SettingsFragment extends Fragment {
 
             // 手动控制竖向排列每行卡片数（竖屏/横屏各 1~10）
             if (switchGridManualColumns != null) {
-                boolean manual = prefs.getBoolean(KEY_GRID_MANUAL_ENABLED, false);
+                boolean manual = prefs.getBoolean(SettingsStore.KEY_GRID_MANUAL_ENABLED, false);
                 switchGridManualColumns.setChecked(manual);
                 restoreGridColumnsSpinner(spinnerGridManualColumnsPortrait,
-                        prefs.getInt(KEY_GRID_MANUAL_COLUMNS_PORTRAIT, 3), manual);
+                        prefs.getInt(SettingsStore.KEY_GRID_MANUAL_COLUMNS_PORTRAIT, 3), manual);
                 restoreGridColumnsSpinner(spinnerGridManualColumnsLandscape,
-                        prefs.getInt(KEY_GRID_MANUAL_COLUMNS_LANDSCAPE, 4), manual);
+                        prefs.getInt(SettingsStore.KEY_GRID_MANUAL_COLUMNS_LANDSCAPE, 4), manual);
             }
 
             // 图片缓存过期天数（7/14/21/30）
             if (spinnerImageCacheDays != null) {
-                int days = prefs.getInt(KEY_IMAGE_CACHE_DAYS, 7);
+                int days = prefs.getInt(SettingsStore.KEY_IMAGE_CACHE_DAYS, 7);
                 int best = 0;
                 int bestDiff = Integer.MAX_VALUE;
                 for (int i = 0; i < IMAGE_CACHE_DAYS_VALUES.length; i++) {
@@ -1129,7 +1079,7 @@ public class SettingsFragment extends Fragment {
 
             // 日志保留天数（7/14/30/90）
             if (spinnerLogRetainDays != null) {
-                int days = prefs.getInt(KEY_LOG_RETAIN_DAYS, 30);
+                int days = prefs.getInt(SettingsStore.KEY_LOG_RETAIN_DAYS, 30);
                 int best = 0;
                 int bestDiff = Integer.MAX_VALUE;
                 for (int i = 0; i < LOG_RETAIN_DAYS_VALUES.length; i++) {
@@ -1181,16 +1131,11 @@ public class SettingsFragment extends Fragment {
     }
 
     private void saveAutoCloseMinutes(double value) {
-        savePref(KEY_AUTO_CLOSE_MINUTES, String.valueOf(value));
+        settingsStore.set(SettingsStore.KEY_AUTO_CLOSE_MINUTES, String.valueOf(value));
     }
 
     private double getSavedAutoCloseMinutes() {
-        try {
-            SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            String v = prefs.getString(KEY_AUTO_CLOSE_MINUTES, null);
-            if (v != null) return Double.parseDouble(v);
-        } catch (Exception ignore) {}
-        return 1;
+        return settingsStore.getDoubleMinutes(SettingsStore.KEY_AUTO_CLOSE_MINUTES, 1);
     }
 
     private void postSettings(String key, boolean value) {
@@ -1245,10 +1190,10 @@ public class SettingsFragment extends Fragment {
             float speed = 1.0f;
             if (seekTtsSpeed != null) speed = 0.5f + seekTtsSpeed.getProgress() * 0.1f;
 
-            savePref(KEY_TTS_VOICE, voicePos);
-            savePref(KEY_TTS_STYLE, stylePos);
-            savePref(KEY_TTS_CUSTOM_STYLE, customStyle);
-            savePref(KEY_TTS_SPEED, (int)(speed * 10));
+            settingsStore.set(SettingsStore.KEY_TTS_VOICE, voicePos);
+            settingsStore.set(SettingsStore.KEY_TTS_STYLE, stylePos);
+            settingsStore.set(SettingsStore.KEY_TTS_CUSTOM_STYLE, customStyle);
+            settingsStore.set(SettingsStore.KEY_TTS_SPEED, (int)(speed * 10));
 
             // Sync to server
             JSONObject body = new JSONObject();
@@ -1602,7 +1547,7 @@ public class SettingsFragment extends Fragment {
                     // Save auth token locally
                     try {
                         String accessToken = authResult.optString("accessToken", "");
-                        SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+                        SharedPreferences prefs = settingsStore.prefs();
                         prefs.edit()
                                 .putString("local_access_token", accessToken)
                                 .putString("local_user_id", userId)

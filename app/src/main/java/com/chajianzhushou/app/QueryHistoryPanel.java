@@ -44,19 +44,19 @@ public class QueryHistoryPanel {
     private static final int MAX_HISTORY = 20;
     private static final int HISTORY_PANEL_MAX_ROWS = 10;
 
-    private final Context context;
+    private final Context context; // 注意：必须是 Activity 上下文（带主题），否则 getColor 不随 AppCompat 强制主题变化
     private final LinearLayout panel;
     private final Host host;
     private View armedHistoryView; // 当前处于"删除待命"态的历史 chip（null=无）
 
     public QueryHistoryPanel(Context context, LinearLayout panel, Host host) {
-        this.context = context.getApplicationContext();
+        this.context = context;
         this.panel = panel;
         this.host = host;
     }
 
     private SharedPreferences prefs() {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        return context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
     public List<JSONObject> load() {
@@ -143,8 +143,8 @@ public class QueryHistoryPanel {
         panel.setVisibility(View.VISIBLE);
         try {
             android.content.res.Resources res = context.getResources();
-            int ink2 = context.getColor(R.color.ink2);
-            int muted = context.getColor(R.color.muted);
+            int ink2 = context.getResources().getColor(R.color.ink2, context.getTheme());
+            int muted = context.getResources().getColor(R.color.muted, context.getTheme());
             int padH = res.getDimensionPixelSize(R.dimen.spacing_lg);
             int padV = res.getDimensionPixelSize(R.dimen.spacing_lg);
 
@@ -210,7 +210,7 @@ public class QueryHistoryPanel {
                 deleteBtn.setVisibility(View.GONE);
                 android.graphics.drawable.GradientDrawable circle = new android.graphics.drawable.GradientDrawable();
                 circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-                circle.setColor(context.getColor(R.color.danger));
+                circle.setColor(context.getResources().getColor(R.color.danger, context.getTheme()));
                 deleteBtn.setBackground(circle);
                 int delSize = (int) (18 * context.getResources().getDisplayMetrics().density + 0.5f);
                 LinearLayout.LayoutParams delLp = new LinearLayout.LayoutParams(delSize, delSize);
@@ -272,8 +272,8 @@ public class QueryHistoryPanel {
             android.content.res.Resources res = context.getResources();
             int strokePx = Math.max(1, res.getDimensionPixelSize(R.dimen.divider_height));
             int corner = res.getDimensionPixelSize(R.dimen.radius_md);
-            int border = context.getColor(R.color.hair2);
-            int danger = context.getColor(R.color.danger);
+            int border = context.getResources().getColor(R.color.hair2, context.getTheme());
+            int danger = context.getResources().getColor(R.color.danger, context.getTheme());
             android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
             bg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
             bg.setCornerRadius(corner);
