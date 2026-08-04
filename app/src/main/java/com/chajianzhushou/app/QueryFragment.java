@@ -52,9 +52,6 @@ public class QueryFragment extends Fragment {
     private static final String TAG = "QueryFragment";
     private static final String PREFS_GRID = "query_grid_view";
     private static final String KEY_AUTO_REFRESH = "auto_refresh_interval";
-    private static final String PREFS_HISTORY = "query_history";
-    private static final int MAX_HISTORY = 20;
-    private static final int HISTORY_PANEL_MAX_ROWS = 10;
     private static final String KEY_GRID_MANUAL_ENABLED = "grid_manual_columns_enabled";
     private static final String KEY_GRID_MANUAL_COLUMNS_PORTRAIT = "grid_manual_columns_portrait";
     private static final String KEY_GRID_MANUAL_COLUMNS_LANDSCAPE = "grid_manual_columns_landscape";
@@ -79,7 +76,7 @@ public class QueryFragment extends Fragment {
     private boolean hasQueried = false;
     private LinearLayout resultsContainer;
     private LinearLayout historyPanel;
-    private View armedHistoryView = null; // 当前处于"删除待命"态的历史 chip（null=无）
+    private QueryHistoryPanel historyPanelHelper; // 查询历史面板（存储/渲染/长按删除）
     private ProgressBar progressBar;
     private LinearLayout tvNoResults;
     private FrameLayout loadingMask;
@@ -212,6 +209,13 @@ public class QueryFragment extends Fragment {
         }
         resultsContainer = view.findViewById(R.id.results_container);
         historyPanel = view.findViewById(R.id.history_panel);
+        historyPanelHelper = new QueryHistoryPanel(requireContext(), historyPanel, new QueryHistoryPanel.Host() {
+            @Override public EditText input() { return etBillCode; }
+            @Override public View root() { return getView(); }
+            @Override public void setSearchType(String t) { QueryFragment.this.setSearchType(t); }
+            @Override public void runQuery() { performQuery(true); }
+            @Override public void toast(String msg) { safeToast(msg); }
+        });
         // 网格行通过负 margin 向外贴边，行宽会超出本容器边界；
         // 关闭子视图裁剪，避免最左/最右卡片边缘（含边框、圆角）被裁掉
         resultsContainer.setClipChildren(false);
@@ -365,18 +369,18 @@ public class QueryFragment extends Fragment {
 
         // Query button
         btnQuery.setOnClickListener(v -> {
-            hideHistoryPanel();
+            historyPanelHelper.hide();
             performQuery(true);
         });
 
         // 输入框聚焦：展开最近查询记录；失焦：延迟收起（给点击记录留时间）
         etBillCode.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) {
-                renderHistory();
+                historyPanelHelper.render();
             } else {
                 mainHandler.postDelayed(() -> {
                     if (historyPanel != null && !etBillCode.hasFocus()) {
-                        historyPanel.setVisibility(View.GONE);
+                        historyPanelHelper.hide();
                     }
                 }, 200);
             }
@@ -386,7 +390,7 @@ public class QueryFragment extends Fragment {
         // 按返回键收起键盘时输入框不丢焦点，第二次点击不会触发 onFocusChange
         etBillCode.setOnTouchListener((v, event) -> {
             if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
-                renderHistory();
+                historyPanelHelper.render();
             }
             return false;
         });
@@ -403,11 +407,11 @@ public class QueryFragment extends Fragment {
                 int kbH = screenH - r.bottom;
                 boolean nowVisible = kbH >= screenH / 4;
                 if (keyboardVisible[0] && !nowVisible) {
-                    historyPanel.setVisibility(View.GONE);
+                    historyPanelHelper.hide();
                 } else if (!keyboardVisible[0] && nowVisible
                         && etBillCode != null && etBillCode.hasFocus()) {
                     // 键盘从隐藏→弹出且输入框有焦点：补一次显示
-                    renderHistory();
+                    historyPanelHelper.render();
                 }
                 keyboardVisible[0] = nowVisible;
             } catch (Throwable ignore) {}
@@ -568,6 +572,10 @@ public class QueryFragment extends Fragment {
             }
             outState.putString("qb_searchType", searchType);
             outState.putString("qb_lastQueriedBillCode", lastQueriedBillCode);
+            // 主题切换等 Activity 重建时保留"刚刚出库"标记，避免排序块丢失
+            if (!justOutboundBillCodes.isEmpty()) {
+                outState.putString("qb_justOutbound", new JSONArray(justOutboundBillCodes).toString());
+            }
             outState.putBoolean("qb_showDelivered", showDelivered);
             outState.putBoolean("qb_isGridView", isGridView);
             if (switchShowDelivered != null) {
@@ -609,6 +617,14 @@ public class QueryFragment extends Fragment {
             String savedLast = savedInstanceState.getString("qb_lastQueriedBillCode", "");
             if (savedLast != null && savedLast.length() > 0) {
                 lastQueriedBillCode = savedLast;
+            }
+            String savedJustOutbound = savedInstanceState.getString("qb_justOutbound", "");
+            if (savedJustOutbound != null && savedJustOutbound.length() > 0) {
+                JSONArray arr = new JSONArray(savedJustOutbound);
+                for (int i = 0; i < arr.length(); i++) {
+                    String bc = arr.optString(i, "");
+                    if (bc.length() > 0) justOutboundBillCodes.add(bc);
+                }
             }
             if (savedInstanceState.containsKey("qb_showDelivered")) {
                 showDelivered = savedInstanceState.getBoolean("qb_showDelivered", showDelivered);
@@ -659,6 +675,7 @@ public class QueryFragment extends Fragment {
 
         detachScrollLoadMoreListener();
         scrollView = null;
+        historyPanelHelper = null;
 
         if (syncClient != null) {
             try { syncClient.disconnect(); } catch (Exception ignore) {}
@@ -948,7 +965,7 @@ public class QueryFragment extends Fragment {
         }
         // 记录查询历史（输入框聚焦时展示"最近查询"）；自动刷新/语音识别不计入
         if (recordHistory && !isAuto) {
-            recordQueryHistory(billCode, effectiveType);
+            historyPanelHelper.record(billCode, effectiveType);
         }
 
         boolean sd = (switchShowDelivered != null) ? switchShowDelivered.isChecked() : showDelivered;
@@ -1001,7 +1018,7 @@ public class QueryFragment extends Fragment {
             } else {
                 // Direct mode: call ZTO API directly
                 __queryMode = "DIRECT";
-                new Thread(() -> {
+                Threads.io().execute(() -> {
                     try {
                         JSONObject response = directApiClient.queryPackages(billCode, effectiveType, isAuto);
                         __tRespArrived = System.currentTimeMillis();
@@ -1018,7 +1035,7 @@ public class QueryFragment extends Fragment {
                             rescheduleAutoRefreshOnErrorOrEmpty();
                         });
                     }
-                }).start();
+                });
             }
         } catch (Exception e) {
             isQuerying = false;
@@ -1116,17 +1133,13 @@ public class QueryFragment extends Fragment {
         if (isAuto && oldPackages != null && oldPackages.size() > 0) {
             java.util.Set<String> newBillCodes = new java.util.HashSet<>();
             for (JSONObject pkg : newPackages) {
-                String bc = firstNonEmpty(pkg.optString("billCode", ""),
-                        pkg.optString("trackingNumber", ""),
-                        pkg.optString("waybillCode", ""));
+                String bc = pkgBillCode(pkg);
                 if (bc.length() > 0) newBillCodes.add(bc);
             }
             // 从旧列表中补充已出库包裹（不在新待取件列表中）
             for (JSONObject oldPkg : oldPackages) {
                 if (!"delivered".equals(oldPkg.optString("status", ""))) continue;
-                String bc = firstNonEmpty(oldPkg.optString("billCode", ""),
-                        oldPkg.optString("trackingNumber", ""),
-                        oldPkg.optString("waybillCode", ""));
+                String bc = pkgBillCode(oldPkg);
                 if (bc.length() > 0 && !newBillCodes.contains(bc)) {
                     currentPackages.add(oldPkg);
                 }
@@ -1137,9 +1150,7 @@ public class QueryFragment extends Fragment {
                 autoFreshBillCodes = newBillCodes;
                 for (JSONObject oldPkg : oldPackages) {
                     if ("delivered".equals(oldPkg.optString("status", ""))) continue;
-                    String bc = firstNonEmpty(oldPkg.optString("billCode", ""),
-                            oldPkg.optString("trackingNumber", ""),
-                            oldPkg.optString("waybillCode", ""));
+                    String bc = pkgBillCode(oldPkg);
                     if (bc.length() > 0 && !newBillCodes.contains(bc)) {
                         currentPackages.add(oldPkg);
                         justOutboundBillCodes.add(bc);
@@ -1149,9 +1160,7 @@ public class QueryFragment extends Fragment {
                 // 显示已出库关闭：消失的待取件（多半刚出库）不保留，播放"颗粒化渐隐"消失动画
                 for (JSONObject oldPkg : oldPackages) {
                     if ("delivered".equals(oldPkg.optString("status", ""))) continue;
-                    String bc = firstNonEmpty(oldPkg.optString("billCode", ""),
-                            oldPkg.optString("trackingNumber", ""),
-                            oldPkg.optString("waybillCode", ""));
+                    String bc = pkgBillCode(oldPkg);
                     if (bc.length() > 0 && !newBillCodes.contains(bc)) {
                         gonePendingBillCodes.add(bc);
                     }
@@ -1173,7 +1182,10 @@ public class QueryFragment extends Fragment {
         // TTS
         int pendingCount = 0;
         for (JSONObject pkg : currentPackages) {
-            if ("pending".equals(pkg.optString("status", ""))) pendingCount++;
+            // 口径：已标记"刚刚出库"的卡片（补查确认前的旧待取件数据）不再计入待取，
+            // 避免补查完成前 TTS/自动刷新停止判断多算 1 个
+            if ("pending".equals(pkg.optString("status", ""))
+                    && !justOutboundBillCodes.contains(pkgBillCode(pkg))) pendingCount++;
         }
 
         Log.d(TAG, "查询完成: " + currentPackages.size() + " 条结果, pending=" + pendingCount);
@@ -1269,9 +1281,7 @@ public class QueryFragment extends Fragment {
             for (JSONObject oldPkg : oldPackages) {
                 if (fetchCount >= 5) break;
                 if ("delivered".equals(oldPkg.optString("status", ""))) continue;
-                String bc = firstNonEmpty(oldPkg.optString("billCode", ""),
-                        oldPkg.optString("trackingNumber", ""),
-                        oldPkg.optString("waybillCode", ""));
+                String bc = pkgBillCode(oldPkg);
                 if (bc.length() > 0 && !freshBillCodes.contains(bc)) {
                     fetchCount++;
                     fetchFreshPackageByBillCode(bc, oldPkg);
@@ -1308,7 +1318,7 @@ public class QueryFragment extends Fragment {
                     }
                 });
             } else if (directApiClient != null) {
-                new Thread(() -> {
+                Threads.io().execute(() -> {
                     JSONObject fresh = null;
                     try {
                         fresh = extractFirstPackageFromQueryResponse(directApiClient.queryPackages(billCode, "billCode"));
@@ -1324,7 +1334,7 @@ public class QueryFragment extends Fragment {
                             }
                         });
                     } catch (Throwable ignore) {}
-                }, "fresh-pkg").start();
+                });
             }
         } catch (Throwable ignore) {}
     }
@@ -1376,9 +1386,7 @@ public class QueryFragment extends Fragment {
             } catch (Exception ignore) {}
             int idx = -1;
             for (int i = 0; i < currentPackages.size(); i++) {
-                String bc = firstNonEmpty(currentPackages.get(i).optString("billCode", ""),
-                        currentPackages.get(i).optString("trackingNumber", ""),
-                        currentPackages.get(i).optString("waybillCode", ""));
+                String bc = pkgBillCode(currentPackages.get(i));
                 if (billCode.equals(bc)) { idx = i; break; }
             }
             boolean replaced = false;
@@ -1593,7 +1601,7 @@ public class QueryFragment extends Fragment {
                 }
                 // 主线程截位图（视图只能主线程绘制），后台线程生成帧序列
                 final android.graphics.Bitmap bmp = captureCardBitmap(card);
-                new Thread(() -> {
+                Threads.io().execute(() -> {
                     try {
                         final List<android.graphics.Bitmap> frames =
                                 (bmp != null) ? DissolveView.buildFrames(bmp) : null;
@@ -1609,7 +1617,7 @@ public class QueryFragment extends Fragment {
                     } catch (Throwable t) {
                         mainHandler.post(() -> finishDissolveOne(remaining, finishAll));
                     }
-                }).start();
+                });
             });
         }
     }
@@ -1795,10 +1803,7 @@ public class QueryFragment extends Fragment {
                 List<String> newIds = new ArrayList<>();
                 java.util.Map<String, JSONObject> itemMap = new java.util.HashMap<>();
                 for (JSONObject item : currentPackages) {
-                    String iid = firstNonEmpty(
-                            item.optString("billCode", ""),
-                            item.optString("trackingNumber", ""),
-                            item.optString("waybillCode", ""));
+                    String iid = pkgBillCode(item);
                     newIds.add(iid);
                     if (iid.length() > 0) itemMap.put(iid, item);
                 }
@@ -1863,12 +1868,16 @@ public class QueryFragment extends Fragment {
                         newRowIds.add(newIds.subList(i, Math.min(i + spanCount, newIds.size())));
                     }
 
-                    final int newRowCount = newRowIds.size();
+                    // 懒加载差分：只处理当前已渲染的行数（首屏至少 BATCH_SIZE 条），
+                    // 剩余行等滚动到底部再加载，避免每轮自动刷新全量重建全部卡片
+                    int desired = Math.max(renderedCount, BATCH_SIZE);
+                    int targetCount = Math.min(currentPackages.size(), desired);
+                    final int targetRowCount = Math.min(newRowIds.size(), (targetCount + spanCount - 1) / spanCount);
                     // 预判断哪些旧行保持不动（内容与期望顺序完全一致 → 零闪烁）；保持不动的行里的卡片不可被挪用，否则会破坏该行
                     boolean[] keepRows = new boolean[oldRows.size()];
                     for (int ri = 0; ri < oldRows.size(); ri++) {
                         LinearLayout oldRow = oldRows.get(ri);
-                        boolean same = ri < newRowCount && oldRow.getChildCount() == newRowIds.get(ri).size();
+                        boolean same = ri < targetRowCount && oldRow.getChildCount() == newRowIds.get(ri).size();
                         if (same) {
                             List<String> rowIds = newRowIds.get(ri);
                             for (int j = 0; j < rowIds.size(); j++) {
@@ -1882,7 +1891,7 @@ public class QueryFragment extends Fragment {
                         }
                         keepRows[ri] = same;
                     }
-                    for (int ri = 0; ri < newRowCount; ri++) {
+                    for (int ri = 0; ri < targetRowCount; ri++) {
                         List<String> rowIds = newRowIds.get(ri);
                         if (ri < oldRows.size() && keepRows[ri]) continue; // 内容一致，完全不动（零闪烁）
                         structuralChanged[0] = true; // 该行被重建 → 列表结构有变化
@@ -1935,10 +1944,12 @@ public class QueryFragment extends Fragment {
                         if (ri >= oldRows.size()) resultsContainer.addView(targetRow);
                     }
                     // 删除多余的旧行（从末尾开始移除）
-                    for (int ri = oldRows.size() - 1; ri >= newRowCount; ri--) {
+                    for (int ri = oldRows.size() - 1; ri >= targetRowCount; ri--) {
                         resultsContainer.removeView(oldRows.get(ri));
                         structuralChanged[0] = true;
                     }
+                    // 懒加载：更新已渲染卡片数；还有剩余则保持滚动加载监听
+                    renderedCount = Math.min(currentPackages.size(), targetRowCount * spanCount);
                 } else {
                     // ===== 列表模式：清空后重建 =====
                     // 先收集需要保留的卡片（清空后再加回），避免整批重建闪烁
@@ -1956,23 +1967,27 @@ public class QueryFragment extends Fragment {
                     }
                     resultsContainer.removeAllViews();
                     structuralChanged[0] = survivingCards.size() < oldChildCount; // 有卡片被移除
-                    // 保留的卡片直接加回，新增的追加
-                    java.util.Set<String> keptIds = new java.util.HashSet<>();
+                    // 懒加载：只重建已渲染的批次（首屏至少 BATCH_SIZE 条），剩余滚动再加载
+                    // 按新位置复用仍在本批次的存活卡片，避免重复渲染
+                    int desired = Math.max(renderedCount, BATCH_SIZE);
+                    int targetCount = Math.min(currentPackages.size(), desired);
+                    java.util.Map<String, View> keptById = new java.util.HashMap<>();
                     for (View card : survivingCards) {
                         Object tag = card.getTag(R.id.btn_query);
-                        if (tag != null) keptIds.add(tag.toString());
-                        resultsContainer.addView(card);
+                        if (tag != null) keptById.put(tag.toString(), card);
                     }
-                    for (JSONObject item : currentPackages) {
-                        String itemId = firstNonEmpty(
-                                item.optString("billCode", ""),
-                                item.optString("trackingNumber", ""),
-                                item.optString("waybillCode", ""));
-                        if (!keptIds.contains(itemId)) {
+                    for (int idx = 0; idx < targetCount; idx++) {
+                        JSONObject item = currentPackages.get(idx);
+                        String itemId = pkgBillCode(item);
+                        View card = keptById.remove(itemId);
+                        if (card != null) {
+                            resultsContainer.addView(card);
+                        } else {
                             addPackageCard(item, false);
                             structuralChanged[0] = true;
                         }
                     }
+                    renderedCount = targetCount;
                 }
 
                 // 图片热更新：待取件包裹换新照片后 URL 变化 → 更新保留卡片的 ImageView 并重新加载
@@ -2013,8 +2028,12 @@ public class QueryFragment extends Fragment {
                     });
                 }
 
-                renderedCount = currentPackages.size();
-                detachScrollLoadMoreListener();
+                // 还有未渲染的卡片：保持滚动加载监听；已全部渲染则断开
+                if (renderedCount < currentPackages.size()) {
+                    attachScrollLoadMoreListener();
+                } else {
+                    detachScrollLoadMoreListener();
+                }
             } else {
                 // Full rebuild with lazy loading: 首屏只渲染 BATCH_SIZE 条，滚动到底部再加载下一批
                 resultsContainer.removeAllViews();
@@ -2328,7 +2347,7 @@ public class QueryFragment extends Fragment {
         if (billCode == null || billCode.isEmpty() || directApiClient == null) return;
         try {
             final String company = resolveExpressCompanyCode(item);
-            new Thread(() -> {
+            Threads.io().execute(() -> {
                 try {
                     JSONObject photos = directApiClient.getStockBillLog(billCode, company);
                     if (photos == null) return;
@@ -2353,7 +2372,7 @@ public class QueryFragment extends Fragment {
                     if (!isViewReady) return;
                     mainHandler.post(() -> resolveComparePhoto(billCode, m, mn));
                 } catch (Throwable ignore) {}
-            }, "traj-compare").start();
+            });
         } catch (Throwable ignore) {}
     }
 
@@ -2728,9 +2747,7 @@ public class QueryFragment extends Fragment {
         java.util.Set<String> alive = new java.util.HashSet<>();
         if (packages != null) {
             for (JSONObject p : packages) {
-                String bc = firstNonEmpty(p.optString("billCode", ""),
-                        p.optString("trackingNumber", ""),
-                        p.optString("waybillCode", ""));
+                String bc = pkgBillCode(p);
                 if (bc.length() > 0) alive.add(bc);
             }
         }
@@ -2759,7 +2776,8 @@ public class QueryFragment extends Fragment {
             int timeout = 0;
             if (packages != null) {
                 for (JSONObject p : packages) {
-                    if ("pending".equals(p.optString("status", ""))) pending++;
+                    if ("pending".equals(p.optString("status", ""))
+                            && !justOutboundBillCodes.contains(pkgBillCode(p))) pending++;
                     else if (isTimeoutPackage(p)) timeout++;
                 }
             }
@@ -2796,248 +2814,6 @@ public class QueryFragment extends Fragment {
                 resultCountBox.setVisibility(hasQueried ? View.VISIBLE : View.INVISIBLE);
             }
         } catch (Throwable ignore) {}
-    }
-
-    // ===== 查询历史（点击输入框展开最近查询） =====
-
-    private List<JSONObject> loadQueryHistory() {
-        List<JSONObject> list = new ArrayList<>();
-        try {
-            SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
-            String raw = prefs.getString(PREFS_HISTORY, "");
-            if (raw != null && raw.length() > 0) {
-                JSONArray arr = new JSONArray(raw);
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject o = arr.optJSONObject(i);
-                    if (o != null) list.add(o);
-                }
-            }
-        } catch (Throwable ignore) {}
-        return list;
-    }
-
-    private void saveQueryHistory(List<JSONObject> list) {
-        try {
-            JSONArray arr = new JSONArray();
-            for (JSONObject o : list) arr.put(o);
-            requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE)
-                    .edit().putString(PREFS_HISTORY, arr.toString()).apply();
-        } catch (Throwable ignore) {}
-    }
-
-    /** 记录一条查询历史：相同"值+类型"去重并移到最前，超出上限裁剪 */
-    private void recordQueryHistory(String value, String type) {
-        if (value == null || value.isEmpty()) return;
-        try {
-            List<JSONObject> list = loadQueryHistory();
-            list.removeIf(o -> value.equals(o.optString("v", "")) && type.equals(o.optString("t", "")));
-            JSONObject o = new JSONObject();
-            o.put("v", value);
-            o.put("t", type);
-            list.add(0, o);
-            while (list.size() > MAX_HISTORY) list.remove(list.size() - 1);
-            saveQueryHistory(list);
-        } catch (Throwable ignore) {}
-    }
-
-    /** 渲染最近查询面板：点击记录自动回填输入框、选中对应类型并自动查询 */
-    private void renderHistory() {
-        if (historyPanel == null) return;
-        historyPanel.removeAllViews();
-        armedHistoryView = null; // 重渲染后所有 chip 恢复正常态（待命态不跨渲染保留）
-        List<JSONObject> list = loadQueryHistory();
-        if (list.isEmpty()) {
-            historyPanel.setVisibility(View.GONE);
-            return;
-        }
-        // 悬浮定位：面板覆盖在搜索框正下方（不挤压下方控件），与搜索框左右对齐
-        try {
-            View root = getView();
-            if (root != null && etBillCode != null) {
-                int[] rootLoc = new int[2];
-                int[] boxLoc = new int[2];
-                root.getLocationOnScreen(rootLoc);
-                etBillCode.getLocationOnScreen(boxLoc);
-                int top = boxLoc[1] - rootLoc[1] + etBillCode.getHeight();
-                int pad = getResources().getDimensionPixelSize(R.dimen.pad_page_h);
-                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) historyPanel.getLayoutParams();
-                lp.gravity = Gravity.TOP;
-                lp.topMargin = top;
-                lp.leftMargin = pad;
-                lp.rightMargin = pad;
-                lp.width = FrameLayout.LayoutParams.MATCH_PARENT;
-                historyPanel.setLayoutParams(lp);
-            }
-        } catch (Throwable ignore) {}
-        historyPanel.setVisibility(View.VISIBLE);
-        Context ctx = getContext();
-        if (ctx == null) return;
-        try {
-            android.content.res.Resources res = ctx.getResources();
-            int ink2 = getResources().getColor(R.color.ink2, ctx.getTheme());
-            int muted = getResources().getColor(R.color.muted, ctx.getTheme());
-            int padH = res.getDimensionPixelSize(R.dimen.spacing_lg);
-            int padV = res.getDimensionPixelSize(R.dimen.spacing_lg);
-
-            // 面板标题
-            TextView header = new TextView(ctx);
-            header.setText("最近查询");
-            header.setTextColor(muted);
-            header.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.txt_sm));
-            header.setTypeface(Typeface.DEFAULT_BOLD);
-            header.setPadding(padH, padV, padH, padV);
-            historyPanel.addView(header);
-
-            // 横向滚动容器：每条记录一个圆角轮廓 chip
-            HorizontalScrollView hsv = new HorizontalScrollView(ctx);
-            hsv.setHorizontalScrollBarEnabled(false);
-            LinearLayout chipRow = new LinearLayout(ctx);
-            chipRow.setOrientation(LinearLayout.HORIZONTAL);
-            chipRow.setGravity(Gravity.CENTER_VERTICAL);
-            hsv.addView(chipRow);
-            historyPanel.addView(hsv, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-            int chipPadH = res.getDimensionPixelSize(R.dimen.spacing_lg);
-            int chipPadV = res.getDimensionPixelSize(R.dimen.spacing_sm);
-            int margin = res.getDimensionPixelSize(R.dimen.spacing_md);
-
-            int shown = 0;
-            for (JSONObject o : list) {
-                if (shown >= HISTORY_PANEL_MAX_ROWS) break;
-                final String v = o.optString("v", "");
-                final String t = o.optString("t", "");
-                if (v.isEmpty()) continue;
-                String prefix = "phoneTail".equals(t) ? "手机尾号 " : ("pickupCode".equals(t) ? "取件码 " : "运单号 ");
-
-                // 每张 chip 升级为横向容器：文字 + 右侧"×"删除按钮（默认隐藏，长按后显示）
-                LinearLayout container = new LinearLayout(ctx);
-                container.setOrientation(LinearLayout.HORIZONTAL);
-                container.setGravity(Gravity.CENTER_VERTICAL);
-                container.setClickable(true);
-                container.setLongClickable(true);
-                container.setPadding(chipPadH, chipPadV, chipPadH, chipPadV);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                lp.rightMargin = margin;
-                container.setLayoutParams(lp);
-                applyHistoryChipArmedStyle(container, false);
-
-                TextView chipText = new TextView(ctx);
-                chipText.setText(prefix + v);
-                chipText.setTextColor(ink2);
-                chipText.setTextSize(TypedValue.COMPLEX_UNIT_PX, res.getDimension(R.dimen.txt_sm));
-                chipText.setSingleLine(true);
-                chipText.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                chipText.setMaxWidth(res.getDimensionPixelSize(R.dimen.chip_max_width));
-                container.addView(chipText);
-
-                // "×"删除按钮：红色圆形，长按进入待命态后显示
-                TextView deleteBtn = new TextView(ctx);
-                deleteBtn.setText("×");
-                deleteBtn.setTextColor(0xFFFFFFFF);
-                deleteBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-                deleteBtn.setGravity(Gravity.CENTER);
-                deleteBtn.setVisibility(View.GONE);
-                android.graphics.drawable.GradientDrawable circle = new android.graphics.drawable.GradientDrawable();
-                circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-                circle.setColor(getResources().getColor(R.color.danger, ctx.getTheme()));
-                deleteBtn.setBackground(circle);
-                int delSize = (int) (18 * ctx.getResources().getDisplayMetrics().density + 0.5f);
-                LinearLayout.LayoutParams delLp = new LinearLayout.LayoutParams(delSize, delSize);
-                delLp.leftMargin = (int) (6 * ctx.getResources().getDisplayMetrics().density + 0.5f);
-                delLp.gravity = Gravity.CENTER_VERTICAL;
-                deleteBtn.setLayoutParams(delLp);
-                container.addView(deleteBtn);
-
-                // 点击：待命态下只取消待命、不触发查询；正常态回填+查询
-                container.setOnClickListener(vv -> {
-                    try {
-                        if (armedHistoryView != null) {
-                            disarmHistoryDelete();
-                            return;
-                        }
-                        if (etBillCode != null) etBillCode.setText(v);
-                        setSearchType(t);
-                        hideHistoryPanel();
-                        performQuery(true);
-                    } catch (Throwable ignore) {}
-                });
-                // 长按：进入删除待命态（仅该 chip 显示"×"、边框变红）
-                container.setOnLongClickListener(vv -> {
-                    try {
-                        disarmHistoryDelete();
-                        armedHistoryView = container;
-                        applyHistoryChipArmedStyle(container, true);
-                    } catch (Throwable ignore) {}
-                    return true;
-                });
-                // 点"×"：删除该条记录，Toast 提示，面板保持展开（删空自动隐藏）
-                deleteBtn.setOnClickListener(vv -> {
-                    try {
-                        if (deleteQueryHistory(v, t)) {
-                            safeToast("已删除");
-                        } else {
-                            safeToast("删除失败");
-                        }
-                        renderHistory();
-                    } catch (Throwable ignore) {}
-                });
-                chipRow.addView(container);
-                shown++;
-            }
-        } catch (Throwable ignore) {}
-    }
-
-    /** 收起查询历史面板 */
-    private void hideHistoryPanel() {
-        armedHistoryView = null; // 面板收起时清除删除待命态
-        if (historyPanel != null) historyPanel.setVisibility(View.GONE);
-    }
-
-    /** 设置/恢复历史 chip 的样式：armed=true 红色边框+"×"显示；false 恢复默认样式 */
-    private void applyHistoryChipArmedStyle(View container, boolean armed) {
-        if (container == null || getContext() == null) return;
-        try {
-            android.content.res.Resources res = getResources();
-            int strokePx = Math.max(1, res.getDimensionPixelSize(R.dimen.divider_height));
-            int corner = res.getDimensionPixelSize(R.dimen.radius_md);
-            int border = getResources().getColor(R.color.hair2, requireContext().getTheme());
-            int danger = getResources().getColor(R.color.danger, requireContext().getTheme());
-            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-            bg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
-            bg.setCornerRadius(corner);
-            bg.setColor(0x00000000);
-            bg.setStroke(strokePx, armed ? danger : border);
-            container.setBackground(bg);
-            if (container instanceof ViewGroup) {
-                ViewGroup vg = (ViewGroup) container;
-                if (vg.getChildCount() > 1) {
-                    vg.getChildAt(1).setVisibility(armed ? View.VISIBLE : View.GONE);
-                }
-            }
-        } catch (Throwable ignore) {}
-    }
-
-    /** 取消历史 chip 的删除待命态 */
-    private void disarmHistoryDelete() {
-        if (armedHistoryView != null) {
-            applyHistoryChipArmedStyle(armedHistoryView, false);
-            armedHistoryView = null;
-        }
-    }
-
-    /** 从历史记录中删除"值+类型"匹配的一条；返回是否删除成功 */
-    private boolean deleteQueryHistory(String value, String type) {
-        try {
-            List<JSONObject> list = loadQueryHistory();
-            boolean removed = list.removeIf(o -> value.equals(o.optString("v", "")) && type.equals(o.optString("t", "")));
-            if (!removed) return false;
-            saveQueryHistory(list);
-            return true;
-        } catch (Throwable t) {
-            return false;
-        }
     }
 
     private boolean isCardPending(View card) {

@@ -40,6 +40,10 @@ public class DirectApiClient {
     private static final String TIMEOUT_OUTBOUND_REMARK = "超时出库";
     // 超时件出库网关（抓包文件中的地址）
     private static final String TIMEOUT_OUTBOUND_URL = "https://ztwjgateway.zto.com/gateway.do/";
+    // 直连网关统一默认值（登录响应未携带时兜底使用）
+    private static final String DEFAULT_UNION_ID = "unionB-wgxs_oGtI1bbTV4rRKB";
+    private static final String DEFAULT_DEVICE_ID = "1750F6BE-5052-4FE6-9579-E8AF49522BA4";
+    private static final String DEFAULT_YS_DT = "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+";
 
     // 登录请求体（与 server.js LOGIN_POST_DATA 一致）
     private static final String LOGIN_BODY = "data=%7B%0A%20%20%22platformName%22%20%3A%20%22app%22%2C%0A%20%20%22deviceId%22%20%3A%20%221750F6BE-5052-4FE6-9579-E8AF49522BA4%22%2C%0A%20%20%22authorization%22%20%3A%20%22tKow9KH19L%2BtE%2BKQ4yceDyYQ2LkAOvdJpmJIGgn8sIk9AMFQb9pF1DltaHCrMKM7mC58e1owKwQ%5C%2FF7qpl%2B7U7Ubqv9ZrFanwaCsnEZi2V1h7rqgl2qSlFUebLNlpgZRaS%5C%2Fkb6LqtpoRVGPuVVCYk7%5C%2FsCOloAD6vnMTW9KHOuQ5w%3D%22%2C%0A%20%20%22verifyId%22%20%3A%20%22%22%2C%0A%20%20%22deviceName%22%20%3A%20%22iPhone%22%0A%7D";
@@ -152,7 +156,7 @@ public class DirectApiClient {
             callback.onError("缺少单号或图片路径");
             return;
         }
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             try {
                 JSONObject auth = ensureLogin();
                 String url = getEncryptFileUrl(billCode, imgPath, auth);
@@ -164,7 +168,7 @@ public class DirectApiClient {
             } catch (Exception e) {
                 callback.onError(e == null ? "图片URL解析异常" : e.getMessage());
             }
-        }, "img-url-" + Math.abs(billCode.hashCode())).start();
+        });
     }
 
     /** 构建 getEncryptFileUrl 请求对象（不执行），供并发场景复用 */
@@ -174,15 +178,15 @@ public class DirectApiClient {
         data.put("fileName", fileName);
         String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
 
-        String ysDt = auth.optString("ysDt", "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+");
+        String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
         return new Request.Builder()
                 .url("https://kdcs-wx-yd.zt-express.com/gateway.do/")
                 .header("X-Zop-Name", "getEncryptFileUrl")
                 .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.4")
                 .header("X-Ca-Version", "1")
                 .header("x-iam-token", auth.getString("accessToken"))
-                .header("X-Unionid", "unionB-wgxs_oGtI1bbTV4rRKB")
-                .header("X-Device-Id", "1750F6BE-5052-4FE6-9579-E8AF49522BA4")
+                .header("X-Unionid", DEFAULT_UNION_ID)
+                .header("X-Device-Id", DEFAULT_DEVICE_ID)
                 .header("X-Userid", auth.getString("userId"))
                 .header("X-App-Version", "4.51.4")
                 .header("X-Ys-Dt", ysDt)
@@ -207,9 +211,9 @@ public class DirectApiClient {
 
         String token = auth.optString("accessToken", "");
         String userId = auth.optString("userId", "");
-        String unionId = auth.optString("unionId", "unionB-wgxs_oGtI1bbTV4rRKB");
-        String deviceId = auth.optString("deviceId", "1750F6BE-5052-4FE6-9579-E8AF49522BA4");
-        String ysDt = auth.optString("ysDt", "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+");
+        String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
+        String deviceId = auth.optString("deviceId", DEFAULT_DEVICE_ID);
+        String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
 
         Request request = new Request.Builder()
                 .url("https://kdcs-wx-yd.zt-express.com/gateway.do/")
@@ -289,9 +293,9 @@ public class DirectApiClient {
 
         String token = auth.optString("accessToken", "");
         String userId = auth.optString("userId", "");
-        String unionId = auth.optString("unionId", "unionB-wgxs_oGtI1bbTV4rRKB");
-        String deviceId = auth.optString("deviceId", "1750F6BE-5052-4FE6-9579-E8AF49522BA4");
-        String ysDt = auth.optString("ysDt", "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+");
+        String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
+        String deviceId = auth.optString("deviceId", DEFAULT_DEVICE_ID);
+        String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
 
         Request request = new Request.Builder()
                 .url("https://kdcs-wx-lt.zt-express.com/gateway.do/")
@@ -358,9 +362,9 @@ public class DirectApiClient {
 
         String token = auth.optString("accessToken", "");
         String userId = auth.optString("userId", "");
-        String unionId = auth.optString("unionId", "unionB-wgxs_oGtI1bbTV4rRKB");
-        String deviceId = auth.optString("deviceId", "1750F6BE-5052-4FE6-9579-E8AF49522BA4");
-        String ysDt = auth.optString("ysDt", "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+");
+        String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
+        String deviceId = auth.optString("deviceId", DEFAULT_DEVICE_ID);
+        String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
 
         JSONObject queryData = new JSONObject();
         queryData.put("pageSize", 1);
@@ -476,9 +480,9 @@ public class DirectApiClient {
 
         String accessToken = auth.optString("accessToken", "");
         String userId = auth.optString("userId", "");
-        String unionId = auth.optString("unionId", "unionB-wgxs_oGtI1bbTV4rRKB");
-        String deviceId = auth.optString("deviceId", "1750F6BE-5052-4FE6-9579-E8AF49522BA4");
-        String ysDt = auth.optString("ysDt", "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+");
+        String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
+        String deviceId = auth.optString("deviceId", DEFAULT_DEVICE_ID);
+        String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
 
         JSONArray allStockInfos = new JSONArray();
         Integer totalCount = null;
@@ -759,10 +763,10 @@ public class DirectApiClient {
                 .header("X-Ca-Version", "1")
                 .header("x-iam-token", auth.getString("accessToken"))
                 .header("X-Userid", auth.getString("userId"))
-                .header("X-Unionid", "unionB-wgxs_oGtI1bbTV4rRKB")
-                .header("X-Device-Id", "1750F6BE-5052-4FE6-9579-E8AF49522BA4")
+                .header("X-Unionid", DEFAULT_UNION_ID)
+                .header("X-Device-Id", DEFAULT_DEVICE_ID)
                 .header("X-App-Version", "4.51.4")
-                .header("X-Ys-Dt", "05245f012f64472996fb71e2e8b1b97c_e+jQZdUy2qRAT1BBQVKDvplwIuZe3grv")
+                .header("X-Ys-Dt", DEFAULT_YS_DT)
                 .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
                 .build();
 
@@ -953,7 +957,7 @@ public class DirectApiClient {
      */
     public void outboundTimeoutPackage(final String billCode, final String receiveMan, final OutboundCallback callback) {
         if (callback == null) return;
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             try {
                 JSONObject auth = ensureLogin();
                 JSONObject data = new JSONObject();
@@ -965,9 +969,9 @@ public class DirectApiClient {
 
                 String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
 
-                String ysDt = auth.optString("ysDt", "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+");
-                String unionId = auth.optString("unionId", "unionB-wgxs_oGtI1bbTV4rRKB");
-                String deviceId = auth.optString("deviceId", "1750F6BE-5052-4FE6-9579-E8AF49522BA4");
+                String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
+                String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
+                String deviceId = auth.optString("deviceId", DEFAULT_DEVICE_ID);
 
                 Request request = new Request.Builder()
                         .url(TIMEOUT_OUTBOUND_URL)
@@ -1024,6 +1028,6 @@ public class DirectApiClient {
                 final String err = (e == null || e.getMessage() == null) ? "出库异常" : e.getMessage();
                 mainHandler.post(() -> callback.onError(err));
             }
-        }, "timeout-outbound").start();
+        });
     }
 }

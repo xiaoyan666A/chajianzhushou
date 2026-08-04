@@ -27,6 +27,8 @@ public class LogRecorder {
     private static final String PREFS = "chajianzhushou_prefs";
     private static final String KEY_LOGS_ENABLED = "logs_enabled";
     private static final String KEY_MODULE_FILTER_PREFIX = "log_module_filter_";
+    private static final String KEY_LOG_RETAIN_DAYS = "log_retain_days";
+    private static final int DEFAULT_LOG_RETAIN_DAYS = 30;
 
     // 内置模块列表（key, 中文名, 颜色）
     public static final String[][] MODULE_LIST = {
@@ -69,6 +71,7 @@ public class LogRecorder {
     private final Handler writeHandler;
     private final LogsFragment.LogDBHelper dbHelper;
     private SQLiteDatabase writeDb;
+    private long lastCleanupAt = 0L;
 
     private LogRecorder(Context context) {
         appContext = context.getApplicationContext();
@@ -106,6 +109,21 @@ public class LogRecorder {
                 } catch (Exception ignore) {}
             });
         } catch (Exception ignore) {}
+    }
+
+    /** 读取设置"日志保留天数"（1~365，默认30天） */
+    public static int getLogRetainDays(Context ctx) {
+        try {
+            Context c = (ctx == null) ? MainActivity.getAppContext() : ctx;
+            if (c == null) return DEFAULT_LOG_RETAIN_DAYS;
+            SharedPreferences prefs = c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            int days = prefs.getInt(KEY_LOG_RETAIN_DAYS, DEFAULT_LOG_RETAIN_DAYS);
+            if (days < 1) days = 1;
+            if (days > 365) days = 365;
+            return days;
+        } catch (Exception e) {
+            return DEFAULT_LOG_RETAIN_DAYS;
+        }
     }
 
     /**
@@ -291,6 +309,7 @@ public class LogRecorder {
             cv.put("cause", truncate(cause, 500));
             cv.put("is_important", important ? 1 : 0);
             db.insert(TABLE_NAME, null, cv);
+            maybeCleanupExpired();
         } catch (Exception e) {
             try {
                 // 表可能不存在，尝试重建
@@ -301,6 +320,21 @@ public class LogRecorder {
                         "detail TEXT, cause TEXT, is_important INTEGER DEFAULT 0)");
             } catch (Exception ignore) {}
         }
+    }
+
+    /** 按设置天数清理过期日志（每小时最多执行一次，避免频繁删除） */
+    private void maybeCleanupExpired() {
+        long now = System.currentTimeMillis();
+        if (now - lastCleanupAt < 60L * 60 * 1000) return;
+        lastCleanupAt = now;
+        try {
+            SQLiteDatabase db = writeDb;
+            if (db == null) return;
+            int days = getLogRetainDays(appContext);
+            String cutoff = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    .format(new Date(now - days * 24L * 3600 * 1000L));
+            db.delete(TABLE_NAME, "date < ?", new String[]{cutoff});
+        } catch (Throwable ignore) {}
     }
 
     private static String truncate(String s, int max) {

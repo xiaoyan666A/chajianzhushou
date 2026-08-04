@@ -65,6 +65,9 @@ public class SettingsFragment extends Fragment {
     private static final String KEY_IMAGE_CACHE_DAYS = "image_cache_days";
     // 图片缓存过期天数选项（天）
     private static final int[] IMAGE_CACHE_DAYS_VALUES = {7, 14, 21, 30};
+    private static final String KEY_LOG_RETAIN_DAYS = "log_retain_days";
+    // 日志保留天数选项（天）
+    private static final int[] LOG_RETAIN_DAYS_VALUES = {7, 14, 30, 90};
     // 字号重建防抖：3 秒内最多重建一次，杜绝任何意外触发的无限重建循环
     private static volatile long sLastFontRecreateAt = 0L;
     // 界面字号档位：小/中/大/特大（相对系统字号的倍率）
@@ -165,6 +168,7 @@ public class SettingsFragment extends Fragment {
 
     // Views - 缓存管理
     private Spinner spinnerImageCacheDays;
+    private Spinner spinnerLogRetainDays;
     private Button btnClearCache;
 
     // 定位权限申请使用 Activity Result API（替代已弃用的 requestPermissions/onRequestPermissionsResult）
@@ -408,6 +412,27 @@ public class SettingsFragment extends Fragment {
                     savePref(KEY_IMAGE_CACHE_DAYS, days);
                     Log.d(TAG, "图片缓存过期天数: " + days);
                     try { LogRecorder.info(requireContext(), "Settings", "图片缓存过期天数", days + " 天"); } catch (Exception ignore) {}
+                }
+                @Override public void onNothingSelected(AdapterView<?> parent) {}
+            });
+        }
+
+        // 日志保留天数（7/14/30/90 天）
+        spinnerLogRetainDays = view.findViewById(R.id.spinner_log_retain_days);
+        if (spinnerLogRetainDays != null) {
+            java.util.List<String> logRetainOptions = new java.util.ArrayList<>();
+            for (int v : LOG_RETAIN_DAYS_VALUES) logRetainOptions.add(v + " 天");
+            ArrayAdapter<String> logRetainAdapter = new ArrayAdapter<>(
+                    requireContext(), R.layout.spinner_item, logRetainOptions);
+            logRetainAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
+            spinnerLogRetainDays.setAdapter(logRetainAdapter);
+            spinnerLogRetainDays.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
+                    if (isLoadingSettings) return;
+                    int days = LOG_RETAIN_DAYS_VALUES[Math.min(pos, LOG_RETAIN_DAYS_VALUES.length - 1)];
+                    savePref(KEY_LOG_RETAIN_DAYS, days);
+                    Log.d(TAG, "日志保留天数: " + days);
+                    try { LogRecorder.info(requireContext(), "Settings", "日志保留天数", days + " 天"); } catch (Exception ignore) {}
                 }
                 @Override public void onNothingSelected(AdapterView<?> parent) {}
             });
@@ -754,6 +779,7 @@ public class SettingsFragment extends Fragment {
         spinnerGridManualColumnsPortrait = null;
         spinnerGridManualColumnsLandscape = null;
         spinnerImageCacheDays = null;
+        spinnerLogRetainDays = null;
         btnClearCache = null;
         apiService = null;
         mainHandler = null;
@@ -1099,6 +1125,18 @@ public class SettingsFragment extends Fragment {
                     if (diff < bestDiff) { bestDiff = diff; best = i; }
                 }
                 spinnerImageCacheDays.setSelection(best);
+            }
+
+            // 日志保留天数（7/14/30/90）
+            if (spinnerLogRetainDays != null) {
+                int days = prefs.getInt(KEY_LOG_RETAIN_DAYS, 30);
+                int best = 0;
+                int bestDiff = Integer.MAX_VALUE;
+                for (int i = 0; i < LOG_RETAIN_DAYS_VALUES.length; i++) {
+                    int diff = Math.abs(LOG_RETAIN_DAYS_VALUES[i] - days);
+                    if (diff < bestDiff) { bestDiff = diff; best = i; }
+                }
+                spinnerLogRetainDays.setSelection(best);
             }
 
             // Mimo API Key
@@ -1546,7 +1584,7 @@ public class SettingsFragment extends Fragment {
         try { LogRecorder.info(requireContext(), "Settings", "独立执行登录", "不依赖电脑端"); } catch (Exception ignore) {}
         try { btnLogin.setEnabled(false); btnLogin.setText("登录中..."); } catch (Exception ignore) {}
 
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             boolean success = false;
             String errMsg = "未知错误";
             String userId = null;
@@ -1617,6 +1655,6 @@ public class SettingsFragment extends Fragment {
                     safeToast("登录失败: " + finalErr);
                 }
             });
-        }, "direct-login").start();
+        });
     }
 }

@@ -99,24 +99,7 @@ public class ApiService {
                 .url(getBaseUrl() + "/api/query")
                 .post(RequestBody.create(body.toString(), MediaType.parse("application/json")))
                 .build();
-
-        client.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                mainHandler.post(() -> callback.onError("网络错误: " + e.getMessage()));
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                String responseBody = response.body() != null ? response.body().string() : "{}";
-                try {
-                    JSONObject json = new JSONObject(responseBody);
-                    mainHandler.post(() -> callback.onSuccess(json));
-                } catch (JSONException e) {
-                    mainHandler.post(() -> callback.onError("解析错误: " + e.getMessage()));
-                }
-            }
-        });
+        enqueue(request, callback);
     }
 
     public void refreshToken(ApiCallback callback) {
@@ -124,24 +107,7 @@ public class ApiService {
                 .url(getBaseUrl() + "/api/login")
                 .post(RequestBody.create("", MediaType.parse("application/json")))
                 .build();
-
-        client.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                mainHandler.post(() -> callback.onError("网络错误: " + e.getMessage()));
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                String responseBody = response.body() != null ? response.body().string() : "{}";
-                try {
-                    JSONObject json = new JSONObject(responseBody);
-                    mainHandler.post(() -> callback.onSuccess(json));
-                } catch (JSONException e) {
-                    mainHandler.post(() -> callback.onError("解析错误: " + e.getMessage()));
-                }
-            }
-        });
+        enqueue(request, callback);
     }
 
     public void getSettings(ApiCallback callback) {
@@ -149,24 +115,7 @@ public class ApiService {
                 .url(getBaseUrl() + "/api/settings")
                 .get()
                 .build();
-
-        client.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                mainHandler.post(() -> callback.onError("网络错误: " + e.getMessage()));
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                String responseBody = response.body() != null ? response.body().string() : "{}";
-                try {
-                    JSONObject json = new JSONObject(responseBody);
-                    mainHandler.post(() -> callback.onSuccess(json));
-                } catch (JSONException e) {
-                    mainHandler.post(() -> callback.onError("解析错误: " + e.getMessage()));
-                }
-            }
-        });
+        enqueue(request, callback);
     }
 
     public void getTimeoutPackages(ApiArrayCallback callback) {
@@ -204,21 +153,8 @@ public class ApiService {
         });
     }
 
-    public void outboundPackage(String billCode, String receiveMan, ApiCallback callback) {
-        JSONObject body = new JSONObject();
-        try {
-            body.put("billCode", billCode);
-            body.put("receiveMan", receiveMan);
-        } catch (JSONException e) {
-            mainHandler.post(() -> callback.onError("JSON error: " + e.getMessage()));
-            return;
-        }
-
-        Request request = new Request.Builder()
-                .url(getBaseUrl() + "/api/timeout/outbound")
-                .post(RequestBody.create(body.toString(), MediaType.parse("application/json")))
-                .build();
-
+    /** 通用 JSON 请求执行器：统一网络错误/解析错误处理，并在主线程回调 */
+    private void enqueue(Request request, ApiCallback callback) {
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {

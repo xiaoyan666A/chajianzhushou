@@ -162,6 +162,7 @@ public class TimeoutFragment extends Fragment {
         tvTimeoutEmpty = null;
         progressBar = null;
         apiService = null;
+        directApiClient = null;
     }
 
     // ===== Helpers =====
@@ -333,7 +334,7 @@ public class TimeoutFragment extends Fragment {
             });
         } else {
             // Direct mode: call ZTO API directly
-            new Thread(() -> {
+            Threads.io().execute(() -> {
                 try {
                     JSONArray response = directApiClient.queryTimeoutPackages();
                     if (!isViewReady) { isQuerying = false; return; }
@@ -350,7 +351,7 @@ public class TimeoutFragment extends Fragment {
                         safeToast("加载失败: " + e.getMessage());
                     });
                 }
-            }).start();
+            });
         }
     }
 
@@ -627,13 +628,29 @@ public class TimeoutFragment extends Fragment {
                 final View finalCard = card;
                 final String finalBillCode = billCode;
                 final String finalReceiveMan = receiveMan;
-                btnOutbound.setOnClickListener(v -> doTimeoutOutbound(finalBillCode, finalReceiveMan, finalCard, btnOutbound));
+                btnOutbound.setOnClickListener(v -> confirmTimeoutOutbound(finalBillCode, finalReceiveMan, finalCard, btnOutbound));
             }
 
             timeoutListContainer.addView(card);
         } catch (Exception e) {
             safeToast("创建卡片失败: " + e.getMessage());
         }
+    }
+
+    /** 超时出库前弹确认窗口，防止误点；确认后才真正执行出库 */
+    private void confirmTimeoutOutbound(final String billCode, final String receiveMan,
+                                        final View card, final Button btnOutbound) {
+        if (!isAdded() || getContext() == null) return;
+        try {
+            String who = (receiveMan == null || receiveMan.trim().length() == 0)
+                    ? "" : "（收件人 " + receiveMan + "）";
+            new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("确认超时出库")
+                    .setMessage("确认对包裹 " + billCode + who + " 执行超时出库？此包裹将标记为「超时出库」。")
+                    .setPositiveButton("确认出库", (d, w) -> doTimeoutOutbound(billCode, receiveMan, card, btnOutbound))
+                    .setNegativeButton("取消", null)
+                    .show();
+        } catch (Throwable ignore) {}
     }
 
     private void doTimeoutOutbound(String billCode, String receiveMan, View card, Button btnOutbound) {
@@ -818,7 +835,7 @@ public class TimeoutFragment extends Fragment {
                     }
                 });
             } else if (directApiClient != null) {
-                new Thread(() -> {
+                Threads.io().execute(() -> {
                     JSONObject pkg0 = null;
                     try {
                         JSONObject resp = directApiClient.queryPackages(billCode, "billCode");
@@ -832,7 +849,7 @@ public class TimeoutFragment extends Fragment {
                         requireActivity().runOnUiThread(() -> handleEnrichResult(billCode, finalPkg, iv, tvRecipient, tvArrivedAt, tvCourier,
                                 currentRecipient, currentArrivedAt, currentCourierDisplay, previewUrlRef));
                     } catch (Throwable ignore) {}
-                }).start();
+                });
             } else {
                 markCourierFallback(tvCourier, billCode, currentCourierDisplay);
             }

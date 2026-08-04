@@ -47,7 +47,7 @@ public class TrajectoryDialog {
         loading.setContentView(loadingBody);
         loading.show();
 
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             JSONArray logs = null;
             try {
                 logs = client.getStockBillLogEntries(billCode, expressCompanyCode);
@@ -69,7 +69,7 @@ public class TrajectoryDialog {
                 }
                 buildDialog(ctx, client, httpClient, billCode, result);
             });
-        }, "trajectory").start();
+        });
     }
 
     /** 与 App 统一的弹窗容器：无标题、透明窗口、卡片圆角背景 */

@@ -222,7 +222,7 @@ public class TtsHelper {
             final String postBody = body.toString();
             Log.d(TAG, "MiMo TTS 请求 voice=" + voice + " text=" + text);
             // 异步请求
-            new Thread(() -> mimoSpeakAsync(ctx, apiKey, postBody, text), "mimo-tts").start();
+            Threads.io().execute(() -> mimoSpeakAsync(ctx, apiKey, postBody, text));
         } catch (Throwable t) {
             Log.w(TAG, "构造MiMo请求失败，回退系统TTS: " + t.getMessage());
             speakWithSystem(ctx, text);

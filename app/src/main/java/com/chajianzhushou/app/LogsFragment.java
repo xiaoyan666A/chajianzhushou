@@ -252,7 +252,7 @@ public class LogsFragment extends Fragment {
         allLoaded.clear();
         totalCount = 0;
         showLoading(true);
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             final List<LogItem> page = new ArrayList<>();
             final int[] total = {0};
             try {
@@ -283,7 +283,7 @@ public class LogsFragment extends Fragment {
                 updateCount(totalCount);
                 updateLoadMore(allLoaded.size() < totalCount);
             });
-        }).start();
+        });
     }
 
     /** 加载下一批日志并追加到列表末尾。 */
@@ -291,7 +291,7 @@ public class LogsFragment extends Fragment {
         if (db == null || logsListContainer == null || btnLoadMore == null) return;
         final int offset = allLoaded.size();
         showLoading(true);
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             final List<LogItem> page = new ArrayList<>();
             try {
                 List<String> conditions = new ArrayList<>();
@@ -318,7 +318,7 @@ public class LogsFragment extends Fragment {
                 updateCount(totalCount);
                 updateLoadMore(allLoaded.size() < totalCount);
             });
-        }).start();
+        });
     }
 
     /** 拼接当前筛选（日期/级别/类别）的 WHERE 条件与参数。 */

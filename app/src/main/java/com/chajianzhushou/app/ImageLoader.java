@@ -74,7 +74,7 @@ public class ImageLoader {
         }
 
         // 2) 异步下载
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             try {
                 Request r = new Request.Builder().url(url).get().build();
                 Response resp = client.newCall(r).execute();
@@ -124,7 +124,7 @@ public class ImageLoader {
             } catch (Exception e) {
                 Log.w(TAG, "load error: url=" + url + " err=" + e.getMessage());
             }
-        }, "img-" + Math.abs(url.hashCode())).start();
+        });
     }
 
     /**
@@ -155,7 +155,7 @@ public class ImageLoader {
             ImageCacheManager.init(null); // 确保缓存目录已创建
             File cacheFile = ImageCacheManager.getCachedFile(billCode, url);
             if (cacheFile != null) {
-                new Thread(() -> {
+                Threads.io().execute(() -> {
                     try {
                         byte[] bytes = readAllBytes(new FileInputStream(cacheFile));
                         Bitmap bitmap = decodeSampledBitmap(bytes, 1080, 1080);
@@ -171,13 +171,13 @@ public class ImageLoader {
                     } catch (Exception e) {
                         Log.w(TAG, "磁盘缓存读取失败: " + billCode + " " + e.getMessage());
                     }
-                }, "img-disk-" + billCode.hashCode()).start();
+                });
                 return;
             }
         }
 
         // 2) 磁盘未命中 → 网络下载 + 写磁盘缓存
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             try {
                 Request r = new Request.Builder().url(url).get().build();
                 Response resp = client.newCall(r).execute();
@@ -209,7 +209,7 @@ public class ImageLoader {
             } catch (Exception e) {
                 Log.w(TAG, "load error: " + url + " " + e.getMessage());
             }
-        }, "img-" + Math.abs(url.hashCode())).start();
+        });
     }
 
     private static byte[] readAllBytes(InputStream in) throws IOException {
@@ -303,7 +303,7 @@ public class ImageLoader {
             return;
         }
 
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             try {
                 Request r = new Request.Builder().url(url).get().build();
                 Response resp = client.newCall(r).execute();
@@ -350,7 +350,7 @@ public class ImageLoader {
                 Log.w(TAG, "loadFull error: url=" + url + " err=" + e.getMessage());
                 mainHandler.post(() -> { if (listener != null) listener.onBitmapReady(null); });
             }
-        }, "img-full-" + Math.abs(url.hashCode())).start();
+        });
     }
 
     /** 大图加载完成回调（用于关闭 loading 等） */

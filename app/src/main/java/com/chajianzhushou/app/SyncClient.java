@@ -203,7 +203,7 @@ public class SyncClient {
         mainHandler.postDelayed(() -> {
             if (t0 != lastInputSyncAt) return;
             final String v = lastInputValue;
-            new Thread(() -> {
+            Threads.io().execute(() -> {
                 try {
                     JSONObject body = new JSONObject();
                     body.put("value", v);
@@ -220,12 +220,12 @@ public class SyncClient {
                         if (ctx != null) LogRecorder.warn(ctx, "Sync", "sendInputSync失败", e.getMessage());
                     } catch (Exception ignore) {}
                 }
-            }, "input-sync").start();
+            });
         }, 300);
     }
 
     public void sendQueryTrigger(final String billCode, final String type, final boolean showDelivered) {
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("billCode", billCode == null ? "" : billCode);
@@ -244,11 +244,11 @@ public class SyncClient {
                     if (ctx != null) LogRecorder.warn(ctx, "Sync", "sendQueryTrigger失败", e.getMessage());
                 } catch (Exception ignore) {}
             }
-        }, "query-trigger-sync").start();
+        });
     }
 
     public void sendGridViewSync(final boolean gridView) {
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("gridView", gridView);
@@ -265,11 +265,11 @@ public class SyncClient {
                     if (ctx != null) LogRecorder.warn(ctx, "Sync", "sendGridViewSync失败", e.getMessage());
                 } catch (Exception ignore) {}
             }
-        }, "grid-view-sync").start();
+        });
     }
 
     public void sendShowDeliveredSync(final boolean showDelivered) {
-        new Thread(() -> {
+        Threads.io().execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("showDelivered", showDelivered);
@@ -286,6 +286,6 @@ public class SyncClient {
                     if (ctx != null) LogRecorder.warn(ctx, "Sync", "sendShowDeliveredSync失败", e.getMessage());
                 } catch (Exception ignore) {}
             }
-        }, "show-delivered-sync").start();
+        });
     }
 }

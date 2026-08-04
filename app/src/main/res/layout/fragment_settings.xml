@@ -721,6 +721,46 @@
                     android:paddingHorizontal="@dimen/card_margin_bottom" />
             </LinearLayout>
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="日志保留天数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="超过该天数的运行日志自动清理"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_log_retain_days"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="84dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="@dimen/divider_height"
