@@ -1138,6 +1138,9 @@ public class QueryFragment extends Fragment {
             lastQueriedType = effectiveType;
             // 手动查询：清空"刚刚出库"标记，重新按服务器返回构建分块列表
             justOutboundBillCodes.clear();
+            // 手动查询：清空图片 URL 解析缓存，重新解析签名 URL
+            // （否则"一键清理缓存"后仍会复用内存里已过期的 URL，图片显示过期）
+            resolvedImageUrls.clear();
         }
         // 记录查询历史（输入框聚焦时展示"最近查询"）；自动刷新/语音识别不计入
         if (recordHistory && !isAuto) {
