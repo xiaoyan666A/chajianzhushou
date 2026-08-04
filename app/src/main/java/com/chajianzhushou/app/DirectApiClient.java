@@ -3,6 +3,7 @@ package com.chajianzhushou.app;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Base64;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -10,6 +11,9 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.net.URLEncoder;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -18,6 +22,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.crypto.Cipher;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -45,8 +50,16 @@ public class DirectApiClient {
     private static final String DEFAULT_DEVICE_ID = "1750F6BE-5052-4FE6-9579-E8AF49522BA4";
     private static final String DEFAULT_YS_DT = "05245f012f64472996fb71e2e8b1b97c_4n6zM8Mqn9VECxVAAQbDvg2R89+WANI+";
 
-    // 登录请求体（与 server.js LOGIN_POST_DATA 一致）
-    private static final String LOGIN_BODY = "data=%7B%0A%20%20%22platformName%22%20%3A%20%22app%22%2C%0A%20%20%22deviceId%22%20%3A%20%221750F6BE-5052-4FE6-9579-E8AF49522BA4%22%2C%0A%20%20%22authorization%22%20%3A%20%22tKow9KH19L%2BtE%2BKQ4yceDyYQ2LkAOvdJpmJIGgn8sIk9AMFQb9pF1DltaHCrMKM7mC58e1owKwQ%5C%2FF7qpl%2B7U7Ubqv9ZrFanwaCsnEZi2V1h7rqgl2qSlFUebLNlpgZRaS%5C%2Fkb6LqtpoRVGPuVVCYk7%5C%2FsCOloAD6vnMTW9KHOuQ5w%3D%22%2C%0A%20%20%22verifyId%22%20%3A%20%22%22%2C%0A%20%20%22deviceName%22%20%3A%20%22iPhone%22%0A%7D";
+    // 登录网关与接口（与兔喜 app 抓包一致）
+    private static final String LOGIN_URL = "https://kdcs-wx-lt.zt-express.com/gateway.do/";
+    private static final String LOGIN_X_ZOP_NAME = "tuxi.spm.account.accountLoginByPwd";
+    // 兔喜登录加密公钥（网页端 JS 内嵌，1024 位 RSA / PKCS#1 v1.5）
+    private static final String RSA_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n"
+            + "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDH2izEULYuGiI0RI7dpdflr9Ny\n"
+            + "hT2jtW9okme7o8a6y6VJFxoxSQkNMFVoh8c5eV900CBeohGNu5ZBo9NO0rBnt8OM\n"
+            + "IBYlTVF5UdyZf7TpuKGSkwCorBfiSVob8ccwH9BvSr9VCuiDZ6FtZzq+6rAbE3+P\n"
+            + "kkNQHgmYDk0v758DjQIDAQAB\n"
+            + "-----END PUBLIC KEY-----\n";
 
     private final OkHttpClient client;
     private final Context appContext;
@@ -75,48 +88,313 @@ public class DirectApiClient {
 
     // ===== Login =====
 
-    private synchronized JSONObject ensureLogin() throws Exception {
-        long now = System.currentTimeMillis();
-        if (accessToken != null && tokenExpiresAt > now) {
-            JSONObject result = new JSONObject();
-            result.put("accessToken", accessToken);
-            result.put("userId", userId);
-            return result;
-        }
-        return doLogin();
+    /**
+     * 公开登录入口：使用明文手机号/密码登录兔喜网关。
+     * 成功后自动保存凭据与 token 缓存（LoginStore），供后续自动重新登录使用。
+     */
+    public static JSONObject login(Context context, String username, String password) throws Exception {
+        return new DirectApiClient(context).loginInternal(username, password);
     }
 
-    private JSONObject doLogin() throws Exception {
+    /**
+     * 发送短信验证码（tuxi.spm.account.sendCode，借鉴官方 SendVerifyCodeRequest 格式）。
+     * @return result 对象（含 isRisk 风控标志：1 表示需要滑块验证），失败抛异常
+     */
+    public static JSONObject sendLoginCode(Context context, String phone) throws Exception {
+        if (phone == null || phone.trim().length() == 0) {
+            throw new Exception("请输入手机号");
+        }
+        JSONObject data = new JSONObject();
+        data.put("phone", phone.trim());
+        data.put("countryCode", "+86");
+        data.put("deviceId", DEFAULT_DEVICE_ID);
+        data.put("deviceName", "iPhone");
+        data.put("action", "login");
+        data.put("verifyId", "");
+        String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
+
         Request request = new Request.Builder()
-                .url("https://kdcs-wx-lt.zt-express.com/gateway.do/")
-                .header("X-Zop-Name", "tuxi.spm.account.accountLoginByPwd")
-                .header("X-App-Version", "4.51.4")
+                .url(LOGIN_URL)
+                .header("X-Zop-Name", "tuxi.spm.account.sendCode")
+                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
                 .header("X-Ca-Version", "1")
-                .header("User-Agent", "wanjiaExpress/4.51.4 (iPhone; iOS 26.6; Scale/3.00)")
-                .post(RequestBody.create(LOGIN_BODY, MediaType.parse("application/x-www-form-urlencoded")))
+                .header("X-App-Version", "4.51.5")
+                .header("User-Agent", "wanjiaExpress/4.51.5 (iPhone; iOS 26.6; Scale/3.00)")
+                .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
+                .build();
+
+        try (Response resp = new DirectApiClient(context).client.newCall(request).execute()) {
+            if (resp.body() == null) {
+                throw new Exception("发送验证码失败：响应为空");
+            }
+            JSONObject body = new JSONObject(resp.body().string());
+            if (!body.optBoolean("status", false) || body.isNull("result")) {
+                String msg = body.optString("message", "未知错误");
+                throw new Exception("发送失败: " + msg);
+            }
+            return body.getJSONObject("result");
+        }
+    }
+
+    /**
+     * 短信验证码登录（tuxi.spm.account.accountLoginByCode）。
+     * authorization = RSA(手机号 + " " + 验证码)，与官方 App 一致；成功后保存凭据与 token。
+     */
+    public static JSONObject loginByCode(Context context, String phone, String code) throws Exception {
+        if (phone == null || phone.trim().length() == 0) {
+            throw new Exception("请输入手机号");
+        }
+        if (code == null || code.trim().length() == 0) {
+            throw new Exception("请输入验证码");
+        }
+        return new DirectApiClient(context).loginByCodeInternal(phone.trim(), code.trim());
+    }
+
+    /** 执行验证码登录并保存凭据（保留原有密码）+ token 缓存 */
+    private JSONObject loginByCodeInternal(String phone, String code) throws Exception {
+        Request request = new Request.Builder()
+                .url(LOGIN_URL)
+                .header("X-Zop-Name", "tuxi.spm.account.accountLoginByCode")
+                .header("X-App-Version", "4.51.5")
+                .header("X-Ca-Version", "1")
+                .header("User-Agent", "wanjiaExpress/4.51.5 (iPhone; iOS 26.6; Scale/3.00)")
+                .post(RequestBody.create(buildLoginBody(phone, code),
+                        MediaType.parse("application/x-www-form-urlencoded")))
                 .build();
 
         try (Response resp = client.newCall(request).execute()) {
             if (resp.body() == null) {
                 Exception e = new Exception("登录响应为空");
                 Log.w(TAG, e.getMessage());
-                try { LogRecorder.error(appContext, "DirectApi", "登录失败", e.getMessage()); } catch (Exception ignore) {}
+                try { LogRecorder.error(appContext, "Login", "验证码登录失败", e.getMessage()); } catch (Exception ignore) {}
+                throw e;
+            }
+            JSONObject body = new JSONObject(resp.body().string());
+            if (!body.optBoolean("status", false) || body.isNull("result")) {
+                String msg = body.optString("message", "未知错误");
+                Log.w(TAG, "验证码登录失败: " + msg);
+                try { LogRecorder.error(appContext, "Login", "验证码登录失败", msg); } catch (Exception ignore) {}
+                throw new Exception("登录失败: " + msg);
+            }
+            JSONObject result = body.getJSONObject("result");
+            long expiresAt = System.currentTimeMillis() + LoginStore.TOKEN_TTL_MS;
+            LoginStore store = new LoginStore(appContext);
+            // 验证码登录没有密码：保留原有密码（若有），仅更新手机号与 token
+            store.saveCredentials(phone, store.getPassword());
+            store.saveToken(result, expiresAt);
+            accessToken = result.optString("accessToken", "");
+            userId = result.optString("userId", "");
+            tokenExpiresAt = expiresAt;
+            Log.d(TAG, "验证码登录成功, userId=" + userId);
+            try { LogRecorder.info(appContext, "Login", "验证码登录成功", "userId=" + userId); } catch (Exception ignore) {}
+            return result;
+        }
+    }
+
+    /** RSA 公钥加密：authorization = RSA(手机号 + " " + 密码)，输出 Base64（与兔喜网页端/app 抓包一致） */
+    private static String rsaEncrypt(String plain) throws Exception {
+        String b64Key = RSA_PUBLIC_KEY
+                .replace("-----BEGIN PUBLIC KEY-----", "")
+                .replace("-----END PUBLIC KEY-----", "")
+                .replaceAll("\\s", "");
+        byte[] keyBytes = Base64.decode(b64Key, Base64.DEFAULT);
+        KeyFactory kf = KeyFactory.getInstance("RSA");
+        PublicKey pub = kf.generatePublic(new X509EncodedKeySpec(keyBytes));
+        Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, pub);
+        return Base64.encodeToString(cipher.doFinal(plain.getBytes("UTF-8")), Base64.NO_WRAP);
+    }
+
+    /** 构造登录请求体（form-urlencoded：data=<url编码的JSON>，与 app 抓包一致） */
+    private static String buildLoginBody(String username, String password) throws Exception {
+        JSONObject data = new JSONObject();
+        data.put("platformName", "app");
+        data.put("deviceId", DEFAULT_DEVICE_ID);
+        data.put("authorization", rsaEncrypt(username + " " + password));
+        data.put("verifyId", "");
+        data.put("deviceName", "iPhone");
+        return "data=" + URLEncoder.encode(data.toString(), "UTF-8");
+    }
+
+    /** 执行登录并保存凭据 + token 缓存；返回登录结果（含 accessToken/userId 等） */
+    private JSONObject loginInternal(String username, String password) throws Exception {
+        if (username == null || username.trim().length() == 0) {
+            throw new Exception("请输入手机号");
+        }
+        if (password == null || password.length() == 0) {
+            throw new Exception("请输入密码");
+        }
+        Request request = new Request.Builder()
+                .url(LOGIN_URL)
+                .header("X-Zop-Name", LOGIN_X_ZOP_NAME)
+                .header("X-App-Version", "4.51.5")
+                .header("X-Ca-Version", "1")
+                .header("User-Agent", "wanjiaExpress/4.51.5 (iPhone; iOS 26.6; Scale/3.00)")
+                .post(RequestBody.create(buildLoginBody(username.trim(), password),
+                        MediaType.parse("application/x-www-form-urlencoded")))
+                .build();
+
+        try (Response resp = client.newCall(request).execute()) {
+            if (resp.body() == null) {
+                Exception e = new Exception("登录响应为空");
+                Log.w(TAG, e.getMessage());
+                try { LogRecorder.error(appContext, "Login", "登录失败", e.getMessage()); } catch (Exception ignore) {}
                 throw e;
             }
             JSONObject body = new JSONObject(resp.body().string());
             if (!body.optBoolean("status", false) || body.isNull("result")) {
                 String msg = body.optString("message", "未知错误");
                 Log.w(TAG, "登录失败: " + msg);
-                try { LogRecorder.error(appContext, "DirectApi", "登录失败", msg); } catch (Exception ignore) {}
+                try { LogRecorder.error(appContext, "Login", "登录失败", msg); } catch (Exception ignore) {}
                 throw new Exception("登录失败: " + msg);
             }
             JSONObject result = body.getJSONObject("result");
+            long expiresAt = System.currentTimeMillis() + LoginStore.TOKEN_TTL_MS;
+            LoginStore store = new LoginStore(appContext);
+            store.saveCredentials(username.trim(), password);
+            store.saveToken(result, expiresAt);
             accessToken = result.optString("accessToken", "");
             userId = result.optString("userId", "");
-            tokenExpiresAt = System.currentTimeMillis() + 24 * 60 * 60 * 1000L;
+            tokenExpiresAt = expiresAt;
             Log.d(TAG, "登录成功, userId=" + userId);
-            try { LogRecorder.info(appContext, "DirectApi", "登录成功", "userId=" + userId); } catch (Exception ignore) {}
+            try { LogRecorder.info(appContext, "Login", "登录成功", "userId=" + userId); } catch (Exception ignore) {}
             return result;
+        }
+    }
+
+    private synchronized JSONObject ensureLogin() throws Exception {
+        long now = System.currentTimeMillis();
+        if (accessToken != null && accessToken.length() > 0 && tokenExpiresAt > now) {
+            return buildAuthResult();
+        }
+        // 优先使用缓存的 token（进程重启后避免每次启动都重新登录）
+        LoginStore store = new LoginStore(appContext);
+        if (store.hasValidToken(now)) {
+            accessToken = store.getAccessToken();
+            userId = store.getUserId();
+            tokenExpiresAt = store.getTokenExpiresAt();
+            return buildAuthResult();
+        }
+        // 缓存 token 失效：先尝试用 refreshToken 无感换新（借鉴官方 refreshToken 机制）
+        if (tryRefreshToken()) {
+            return buildAuthResult();
+        }
+        // refreshToken 也失效：用保存的凭据自动重新登录
+        if (!store.hasCredentials()) {
+            throw new Exception("未登录，请先在登录界面登录兔喜账号");
+        }
+        if (store.getPassword().isEmpty()) {
+            throw new Exception("登录已失效，请重新登录");
+        }
+        return loginInternal(store.getUsername(), store.getPassword());
+    }
+
+    /** 组装本次登录/缓存的认证信息（补充 unionId / ysDt 兜底值） */
+    private JSONObject buildAuthResult() throws Exception {
+        JSONObject result = new JSONObject();
+        result.put("accessToken", accessToken == null ? "" : accessToken);
+        result.put("userId", userId == null ? "" : userId);
+        LoginStore store = new LoginStore(appContext);
+        result.put("unionId", store.getUnionId().length() > 0 ? store.getUnionId() : DEFAULT_UNION_ID);
+        result.put("ysDt", store.getYsDt().length() > 0 ? store.getYsDt() : DEFAULT_YS_DT);
+        return result;
+    }
+
+    /**
+     * 尝试用缓存的 refreshToken 无感换新 token（tuxi.spm.account.refreshToken，与官方 App 一致）。
+     * 成功返回 true 并更新内存与缓存；无 refreshToken 或刷新失败返回 false（调用方再走密码登录）。
+     */
+    private boolean tryRefreshToken() {
+        LoginStore store = new LoginStore(appContext);
+        String refreshToken = store.getRefreshToken();
+        if (refreshToken == null || refreshToken.length() == 0) return false;
+        try {
+            JSONObject data = new JSONObject();
+            data.put("refreshToken", refreshToken);
+            String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
+
+            Request request = new Request.Builder()
+                    .url(LOGIN_URL)
+                    .header("X-Zop-Name", "tuxi.spm.account.refreshToken")
+                    .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
+                    .header("X-Ca-Version", "1")
+                    .header("x-iam-token", store.getAccessToken())
+                    .header("token", store.getAccessToken())
+                    .header("X-Unionid", store.getUnionId().length() > 0 ? store.getUnionId() : DEFAULT_UNION_ID)
+                    .header("X-Device-Id", DEFAULT_DEVICE_ID)
+                    .header("X-Userid", store.getUserId())
+                    .header("X-App-Version", "4.51.5")
+                    .header("X-Ys-Dt", store.getYsDt().length() > 0 ? store.getYsDt() : DEFAULT_YS_DT)
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
+                    .build();
+
+            try (Response resp = client.newCall(request).execute()) {
+                if (resp.body() == null) return false;
+                JSONObject body = new JSONObject(resp.body().string());
+                if (!body.optBoolean("status", false) || body.isNull("result")) {
+                    Log.w(TAG, "refreshToken 刷新失败: " + body.optString("message", "未知错误"));
+                    return false;
+                }
+                JSONObject result = body.getJSONObject("result");
+                String newToken = result.optString("accessToken", "");
+                if (newToken.length() == 0) return false;
+                long expiresAt = System.currentTimeMillis() + LoginStore.TOKEN_TTL_MS;
+                store.saveToken(result, expiresAt);
+                accessToken = newToken;
+                userId = result.optString("userId", store.getUserId());
+                tokenExpiresAt = expiresAt;
+                Log.d(TAG, "refreshToken 换新成功, userId=" + userId);
+                try { LogRecorder.info(appContext, "DirectApi", "Token刷新", "refreshToken 无感换新成功"); } catch (Exception ignore) {}
+                return true;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "refreshToken 刷新异常: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // ===== 门店信息与账号信息（getStaffByStaffCodeWithLoginCheck） =====
+
+    /**
+     * 获取门店信息与账号信息（兔喜 app 登录后首页展示用，按抓包门店信息及账号信息.har 实现）。
+     * @return result 对象（含 depotShortName / depotCode / id / account / name / posts 等），失败返回 null
+     */
+    public JSONObject getStaffInfo() throws Exception {
+        JSONObject auth = ensureLogin();
+        String staffCode = new LoginStore(appContext).getStaffCode();
+        if (staffCode.length() == 0) staffCode = "ZTWJ6667080";
+
+        JSONObject data = new JSONObject();
+        data.put("staffCode", staffCode);
+        String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
+
+        String token = auth.optString("accessToken", "");
+        String userId = auth.optString("userId", "");
+        String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
+        String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
+
+        Request request = new Request.Builder()
+                .url(LOGIN_URL)
+                .header("X-Zop-Name", "getStaffByStaffCodeWithLoginCheck")
+                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
+                .header("X-Ca-Version", "1")
+                .header("x-iam-token", token)
+                .header("token", token)
+                .header("X-Unionid", unionId)
+                .header("X-Device-Id", DEFAULT_DEVICE_ID)
+                .header("X-Userid", userId)
+                .header("X-App-Version", "4.51.5")
+                .header("X-Ys-Dt", ysDt)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
+                .build();
+
+        try (Response resp = client.newCall(request).execute()) {
+            if (resp.body() == null) return null;
+            JSONObject body = new JSONObject(resp.body().string());
+            if (!body.optBoolean("status", false) || body.isNull("result")) return null;
+            return body.getJSONObject("result");
         }
     }
 
@@ -182,13 +460,13 @@ public class DirectApiClient {
         return new Request.Builder()
                 .url("https://kdcs-wx-yd.zt-express.com/gateway.do/")
                 .header("X-Zop-Name", "getEncryptFileUrl")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.4")
+                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
                 .header("X-Ca-Version", "1")
                 .header("x-iam-token", auth.getString("accessToken"))
                 .header("X-Unionid", DEFAULT_UNION_ID)
                 .header("X-Device-Id", DEFAULT_DEVICE_ID)
                 .header("X-Userid", auth.getString("userId"))
-                .header("X-App-Version", "4.51.4")
+                .header("X-App-Version", "4.51.5")
                 .header("X-Ys-Dt", ysDt)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
@@ -218,14 +496,14 @@ public class DirectApiClient {
         Request request = new Request.Builder()
                 .url("https://kdcs-wx-yd.zt-express.com/gateway.do/")
                 .header("X-Zop-Name", "tuxi.spm.read.detail.getStockBillInfo")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.4")
+                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
                 .header("X-Ca-Version", "1")
                 .header("x-iam-token", token)
                 .header("token", token)
                 .header("X-Unionid", unionId)
                 .header("X-Device-Id", deviceId)
                 .header("X-Userid", userId)
-                .header("X-App-Version", "4.51.4")
+                .header("X-App-Version", "4.51.5")
                 .header("X-Ys-Dt", ysDt)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
@@ -300,14 +578,14 @@ public class DirectApiClient {
         Request request = new Request.Builder()
                 .url("https://kdcs-wx-lt.zt-express.com/gateway.do/")
                 .header("X-Zop-Name", "tuxi.spm.read.detail.getStockBillLog")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.4")
+                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
                 .header("X-Ca-Version", "1")
                 .header("x-iam-token", token)
                 .header("token", token)
                 .header("X-Unionid", unionId)
                 .header("X-Device-Id", deviceId)
                 .header("X-Userid", userId)
-                .header("X-App-Version", "4.51.4")
+                .header("X-App-Version", "4.51.5")
                 .header("X-Ys-Dt", ysDt)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
@@ -385,14 +663,14 @@ public class DirectApiClient {
         Request request = new Request.Builder()
                 .url("https://kdcs-wx-yd.zt-express.com/gateway.do/")
                 .header("X-Zop-Name", "tuxi.spm.stock.read.queryScanEnterInfoAppByCode")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.4")
+                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
                 .header("X-Ca-Version", "6")
                 .header("x-iam-token", token)
                 .header("token", token)
                 .header("X-Unionid", unionId)
                 .header("X-Device-Id", deviceId)
                 .header("X-Userid", userId)
-                .header("X-App-Version", "4.51.4")
+                .header("X-App-Version", "4.51.5")
                 .header("X-Ys-Dt", ysDt)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
@@ -510,7 +788,7 @@ public class DirectApiClient {
             Request request = new Request.Builder()
                     .url("https://" + HOST + "/gateway.do/")
                     .header("X-Zop-Name", X_ZOP_NAME)
-                    .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.4")
+                    .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
                     .header("X-Ca-Version", "6")
                     .header("x-iam-token", accessToken)
                     .header("token", accessToken)
@@ -518,7 +796,7 @@ public class DirectApiClient {
                     .header("X-Unionid", unionId)
                     .header("X-Device-Id", deviceId)
                     .header("X-Ys-Dt", ysDt)
-                    .header("X-App-Version", "4.51.4")
+                    .header("X-App-Version", "4.51.5")
                     .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
                     .build();
 
@@ -558,6 +836,8 @@ public class DirectApiClient {
                         accessToken = null;
                         userId = null;
                         tokenExpiresAt = 0;
+                        // 仅清 accessToken（保留 refreshToken），下次 ensureLogin 先无感换新，失败再走密码登录
+                        try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
                     }
                     throw new Exception("查询失败: " + msg);
                 } else {
@@ -759,13 +1039,13 @@ public class DirectApiClient {
         Request request = new Request.Builder()
                 .url("https://kdcs-wx-yd.zt-express.com/gateway.do/")
                 .header("X-Zop-Name", "tuxi.spm.stock.queryTimeOutStockList")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.4")
+                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
                 .header("X-Ca-Version", "1")
                 .header("x-iam-token", auth.getString("accessToken"))
                 .header("X-Userid", auth.getString("userId"))
                 .header("X-Unionid", DEFAULT_UNION_ID)
                 .header("X-Device-Id", DEFAULT_DEVICE_ID)
-                .header("X-App-Version", "4.51.4")
+                .header("X-App-Version", "4.51.5")
                 .header("X-Ys-Dt", DEFAULT_YS_DT)
                 .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
                 .build();

@@ -3,6 +3,7 @@ build/
 local.properties
 .idea/
 *.iml
+.vs/
 .DS_Store
 /captures
 .externalNativeBuild

@@ -1,16 +1,13 @@
 package com.chajianzhushou.app;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.View;
-import android.widget.EditText;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
@@ -45,6 +42,11 @@ public class MainActivity extends AppCompatActivity {
     /** 提供 Application Context 给无 Context 的模块（DirectApiClient/SyncClient 等）写日志。 */
     public static Context getAppContext() { return sAppContext; }
 
+    /** 供登录界面等入口在 Application Context 尚未初始化时提前设置（进程内共享） */
+    public static void setAppContext(Context ctx) {
+        sAppContext = ctx == null ? null : ctx.getApplicationContext();
+    }
+
     @Override
     protected void attachBaseContext(Context newBase) {
         // 应用界面字号设置：首次从 SharedPreferences 读取，之后由设置页更新静态值并重建 Activity
@@ -60,7 +62,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /** 在系统字号基础上叠加用户倍率（小/中/大/特大），并做合理钳制 */
-    private static Context applyFontScale(Context base, float userScale) {
+    /** 在系统字号基础上叠加用户倍率（小/中/大/特大），并做合理钳制；登录界面等入口复用 */
+    public static Context applyFontScale(Context base, float userScale) {
         try {
             Configuration cfg = new Configuration(base.getResources().getConfiguration());
             float system = base.getResources().getConfiguration().fontScale;
@@ -84,6 +87,16 @@ public class MainActivity extends AppCompatActivity {
         // 初始化 LogRecorder（如果用户开启日志输出开关，后续调用即写入）
         try { LogRecorder.getInstance(sAppContext); } catch (Exception ignore) {}
         LogRecorder.info(sAppContext, "Main", "APP启动", "查件助手已启动");
+
+        // 未保存兔喜账号凭据 → 跳转登录界面（新安装 / 已退出登录 / 升级后首次）
+        LoginStore loginStore = new LoginStore(this);
+        if (!loginStore.hasCredentials()) {
+            Intent i = new Intent(this, LoginActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(i);
+            finish();
+            return;
+        }
 
         apiService = new ApiService(this);
 
@@ -188,46 +201,9 @@ public class MainActivity extends AppCompatActivity {
         tx.commitAllowingStateLoss();
     }
 
-    /** 进入设置页：30 分钟会话有效则直接进入，否则弹出管理员密码验证（与电脑端统一机制） */
+    /** 进入设置页：点击直接进入 */
     private void enterSettings() {
-        if (AdminGate.isSessionValid(this)) {
-            switchPage("settings");
-            return;
-        }
-        showAdminPwdDialog();
-    }
-
-    private void showAdminPwdDialog() {
-        final EditText et = new EditText(this);
-        et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        et.setHint("请输入管理员密码");
-        et.setTextSize(17f);
-        // 与 App 输入框风格统一：圆角背景 + 内边距
-        et.setBackgroundResource(R.drawable.bg_input);
-        try {
-            int pad = getResources().getDimensionPixelSize(R.dimen.spacing_lg);
-            et.setPadding(pad, pad, pad, pad);
-        } catch (Exception ignore) {}
-        try {
-            et.setTextColor(getResources().getColor(R.color.ink, getTheme()));
-            et.setHintTextColor(getResources().getColor(R.color.muted, getTheme()));
-        } catch (Exception ignore) {}
-        new AlertDialog.Builder(this)
-                .setTitle("管理员验证")
-                .setMessage("请输入管理员密码以访问设置（验证通过后 30 分钟内免再次验证）")
-                .setView(et)
-                .setPositiveButton("确认", (d, w) -> {
-                    String pwd = et.getText().toString();
-                    if (AdminGate.verify(this, pwd)) {
-                        AdminGate.grant(this);
-                        switchPage("settings");
-                        LogRecorder.info(this, "SETTINGS", "管理员验证通过", "已解锁设置访问（30分钟有效）");
-                    } else {
-                        Toast.makeText(this, "密码错误，请重试", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        switchPage("settings");
     }
 
     @Override

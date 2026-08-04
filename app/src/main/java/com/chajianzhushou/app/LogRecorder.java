@@ -236,7 +236,7 @@ public class LogRecorder {
         if (useCtx != null) {
             try {
                 SharedPreferences prefs = useCtx.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-                if (!prefs.getBoolean(KEY_LOGS_ENABLED, true)) return;
+        if (!prefs.getBoolean(KEY_LOGS_ENABLED, false)) return;
             } catch (Exception ignore) {}
         }
         // 模块独立开关过滤（APP 始终允许）

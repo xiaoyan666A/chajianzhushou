@@ -17,6 +17,8 @@ import java.util.Calendar;
 /**
  * 界面风格主题管理器（与电脑端一致的三模式：浅色/深色/自动切换）
  *
+ * 默认模式为"自动切换"（按日出日落），用户可在设置页改为浅色/深色。
+ *
  * 映射约定（重要）：
  *   - 本应用默认配色即"深色"，存放在 values/（白天模式资源）；
  *   - "浅色"配色存放在 values-night/（夜间模式资源）。
@@ -53,8 +55,8 @@ public class ThemeManager {
 
     public static String getMode(Context ctx) {
         try {
-            return prefs(ctx).getString(KEY_THEME_MODE, MODE_DARK);
-        } catch (Exception e) { return MODE_DARK; }
+            return prefs(ctx).getString(KEY_THEME_MODE, MODE_AUTO);
+        } catch (Exception e) { return MODE_AUTO; }
     }
 
     public static String getSunrise(Context ctx) {

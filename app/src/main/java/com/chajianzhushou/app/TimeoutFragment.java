@@ -5,6 +5,8 @@ import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.CountDownTimer;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -46,6 +48,12 @@ public class TimeoutFragment extends Fragment {
     private LinearLayout tvTimeoutEmpty;
     private ProgressBar progressBar;
     private FrameLayout loadingMask;
+
+    // 超时出库时间判定：每晚 20:30 后才可点击；每分钟刷新一次按钮状态
+    private static final int OUTBOUND_HOUR = 20;
+    private static final int OUTBOUND_MINUTE = 30;
+    private final Handler outboundTickHandler = new Handler(Looper.getMainLooper());
+    private Runnable outboundTickRunnable;
 
     // Core
     private ApiService apiService;
@@ -140,11 +148,14 @@ public class TimeoutFragment extends Fragment {
             serverConnectEnabled = prefs.getBoolean("server_connect_enabled", false);
         } catch (Exception ignore) {}
         if (isAdded()) loadTimeoutPackages();
+        // 每分钟刷新"立即超时出库"按钮的可点击状态（到 20:30 自动恢复可点）
+        startOutboundTimeTick();
     }
 
     @Override
     public void onDestroyView() {
         isViewReady = false;
+        stopOutboundTimeTick();
         if (countDownTimer != null) {
             try { countDownTimer.cancel(); } catch (Exception ignore) {}
             countDownTimer = null;
@@ -166,6 +177,48 @@ public class TimeoutFragment extends Fragment {
     }
 
     // ===== Helpers =====
+
+    // ===== 超时出库时间判定 =====
+
+    /** 是否已到每晚 20:30（含整点） */
+    private boolean isOutboundTimeAllowed() {
+        Calendar c = Calendar.getInstance();
+        int hour = c.get(Calendar.HOUR_OF_DAY);
+        int minute = c.get(Calendar.MINUTE);
+        return hour > OUTBOUND_HOUR || (hour == OUTBOUND_HOUR && minute >= OUTBOUND_MINUTE);
+    }
+
+    /** 刷新所有"立即超时出库"按钮的可点击状态（出库中/已出库按钮不受影响） */
+    private void refreshOutboundButtonStates() {
+        if (timeoutListContainer == null) return;
+        boolean allowed = isOutboundTimeAllowed();
+        for (int i = 0; i < timeoutListContainer.getChildCount(); i++) {
+            View child = timeoutListContainer.getChildAt(i);
+            if (child == null) continue;
+            Button btn = child.findViewById(R.id.btn_outbound);
+            if (btn != null && "立即超时出库".equals(btn.getText().toString())) {
+                btn.setEnabled(allowed);
+            }
+        }
+    }
+
+    private void startOutboundTimeTick() {
+        stopOutboundTimeTick();
+        outboundTickRunnable = new Runnable() {
+            @Override public void run() {
+                refreshOutboundButtonStates();
+                outboundTickHandler.postDelayed(this, 60 * 1000L);
+            }
+        };
+        outboundTickHandler.postDelayed(outboundTickRunnable, 60 * 1000L);
+    }
+
+    private void stopOutboundTimeTick() {
+        if (outboundTickRunnable != null) {
+            outboundTickHandler.removeCallbacks(outboundTickRunnable);
+            outboundTickRunnable = null;
+        }
+    }
 
     private void safeToast(String msg) {
         if (!isAdded() || !isViewReady) return;
@@ -629,6 +682,10 @@ public class TimeoutFragment extends Fragment {
                 final String finalBillCode = billCode;
                 final String finalReceiveMan = receiveMan;
                 btnOutbound.setOnClickListener(v -> confirmTimeoutOutbound(finalBillCode, finalReceiveMan, finalCard, btnOutbound));
+                // 每晚 20:30 前禁用"立即超时出库"按钮
+                if (!isOutboundTimeAllowed() && "立即超时出库".equals(btnOutbound.getText().toString())) {
+                    btnOutbound.setEnabled(false);
+                }
             }
 
             timeoutListContainer.addView(card);
@@ -641,6 +698,11 @@ public class TimeoutFragment extends Fragment {
     private void confirmTimeoutOutbound(final String billCode, final String receiveMan,
                                         final View card, final Button btnOutbound) {
         if (!isAdded() || getContext() == null) return;
+        // 每晚 20:30 后才允许执行超时出库
+        if (!isOutboundTimeAllowed()) {
+            safeToast("超时出库需在每晚 20:30 后执行");
+            return;
+        }
         try {
             String who = (receiveMan == null || receiveMan.trim().length() == 0)
                     ? "" : "（收件人 " + receiveMan + "）";

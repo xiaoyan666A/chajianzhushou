@@ -34,6 +34,12 @@ public class SettingsStore {
     public static final String KEY_LOG_RETAIN_DAYS = "log_retain_days";
     public static final String KEY_MIMO_API_KEY = "mimo_api_key";
     public static final String KEY_MIMO_API_KEY_LOCKED = "mimo_api_key_locked";
+    // 功能区总开关（默认开启；关闭后禁用该卡片内配置）
+    public static final String KEY_UI_DISPLAY_ENABLED = "ui_display_enabled";
+    public static final String KEY_CACHE_MGMT_ENABLED = "cache_mgmt_enabled";
+    public static final String KEY_THEME_ENABLED = "theme_enabled";
+    // 进阶功能（输入解锁码 admin 后显示语音识别/TTS/日志/服务器连接卡片）
+    public static final String KEY_ADVANCED_FEATURES_ENABLED = "advanced_features_enabled";
 
     private final SharedPreferences prefs;
 

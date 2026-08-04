@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!-- 设置界面 —— 严格对齐电脑端 #settings-page
      顺序：顶部栏 → 账号信息 → 系统信息 → 语音识别配置 → TTS配置 → 日志输出 → 服务器连接 → 登录按钮 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
@@ -122,28 +122,14 @@
                         android:textStyle="bold" />
                 </LinearLayout>
             </LinearLayout>
-        </LinearLayout>
 
-        <!-- ===== 系统信息卡片 ===== -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_settings_card"
-            android:padding="@dimen/spacing_3xl"
-            android:layout_marginBottom="@dimen/spacing_2xl">
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair"
+                android:layout_marginVertical="@dimen/spacing_md" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/muted"
-                android:textSize="@dimen/txt_sm"
-                android:textStyle="bold"
-                android:textAllCaps="true"
-                android:letterSpacing="0.06"
-                android:text="系统信息"
-                android:layout_marginBottom="@dimen/spacing_xl" />
-
+            <!-- 姓名 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -157,15 +143,15 @@
                     android:layout_weight="1"
                     android:textColor="@color/ink2"
                     android:textSize="@dimen/txt_base"
-                    android:text="应用版本" />
+                    android:text="姓名" />
 
                 <TextView
-                    android:id="@+id/tv_app_version"
+                    android:id="@+id/tv_staff_name"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textColor="@color/muted"
                     android:textSize="@dimen/txt_base"
-                    android:text="1.5.0" />
+                    android:text="--" />
             </LinearLayout>
 
             <View
@@ -173,6 +159,7 @@
                 android:layout_height="@dimen/divider_height"
                 android:background="@color/hair" />
 
+            <!-- 岗位 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -186,14 +173,15 @@
                     android:layout_weight="1"
                     android:textColor="@color/ink2"
                     android:textSize="@dimen/txt_base"
-                    android:text="快递站点" />
+                    android:text="岗位" />
 
                 <TextView
+                    android:id="@+id/tv_staff_post"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textColor="@color/muted"
                     android:textSize="@dimen/txt_base"
-                    android:text="东大村永顺超市" />
+                    android:text="--" />
             </LinearLayout>
 
             <View
@@ -201,6 +189,7 @@
                 android:layout_height="@dimen/divider_height"
                 android:background="@color/hair" />
 
+            <!-- 账号 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -214,37 +203,23 @@
                     android:layout_weight="1"
                     android:textColor="@color/ink2"
                     android:textSize="@dimen/txt_base"
-                    android:text="站点编码" />
+                    android:text="账号" />
 
                 <TextView
+                    android:id="@+id/tv_staff_account"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textColor="@color/muted"
                     android:textSize="@dimen/txt_base"
-                    android:text="TUXI39300384927" />
+                    android:text="--" />
             </LinearLayout>
-        </LinearLayout>
 
-        <!-- ===== 管理员密码卡片（访问控制，与电脑端统一机制） ===== -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_settings_card"
-            android:padding="@dimen/spacing_3xl"
-            android:layout_marginBottom="@dimen/spacing_2xl">
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/muted"
-                android:textSize="@dimen/txt_sm"
-                android:textStyle="bold"
-                android:textAllCaps="true"
-                android:letterSpacing="0.06"
-                android:text="管理员密码"
-                android:layout_marginBottom="@dimen/spacing_xl" />
-
+            <!-- 门店编码 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -258,532 +233,53 @@
                     android:layout_weight="1"
                     android:textColor="@color/ink2"
                     android:textSize="@dimen/txt_base"
-                    android:text="当前密码" />
-
-                <EditText
-                    android:id="@+id/et_admin_cur_pwd"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/input_height_lg"
-                    android:minWidth="132dp"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/spacing_lg"
-                    android:textColor="@color/ink"
-                    android:textColorHint="@color/muted"
-                    android:textSize="@dimen/txt_base"
-                    android:hint="请输入当前密码"
-                    android:singleLine="true"
-                    android:inputType="textPassword" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/divider_height"
-                android:background="@color/hair" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
+                    android:text="门店编码" />
 
                 <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:textColor="@color/ink2"
-                    android:textSize="@dimen/txt_base"
-                    android:text="新密码" />
-
-                <EditText
-                    android:id="@+id/et_admin_new_pwd"
+                    android:id="@+id/tv_staff_depot_code"
                     android:layout_width="wrap_content"
-                    android:layout_height="@dimen/input_height_lg"
-                    android:minWidth="132dp"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/spacing_lg"
-                    android:textColor="@color/ink"
-                    android:textColorHint="@color/muted"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
                     android:textSize="@dimen/txt_base"
-                    android:hint="至少4位"
-                    android:singleLine="true"
-                    android:inputType="textPassword" />
+                    android:text="--" />
             </LinearLayout>
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="@dimen/divider_height"
-                android:background="@color/hair" />
+                android:background="@color/hair"
+                android:layout_marginBottom="@dimen/spacing_md" />
 
+            <!-- 重新登录 / 退出登录 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
+                android:orientation="horizontal">
 
-                <TextView
+                <Button
+                    android:id="@+id/btn_login"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="@dimen/btn_height_lg"
                     android:layout_weight="1"
-                    android:textColor="@color/ink2"
-                    android:textSize="@dimen/txt_base"
-                    android:text="确认新密码" />
+                    android:background="@drawable/bg_btn_accent"
+                    android:textColor="@color/accent"
+                    android:textSize="@dimen/txt_md"
+                    android:textStyle="bold"
+                    android:text="重新登录"
+                    android:layout_marginEnd="@dimen/spacing_md" />
 
-                <EditText
-                    android:id="@+id/et_admin_confirm_pwd"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/input_height_lg"
-                    android:minWidth="132dp"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/spacing_lg"
-                    android:textColor="@color/ink"
-                    android:textColorHint="@color/muted"
-                    android:textSize="@dimen/txt_base"
-                    android:hint="再次输入新密码"
-                    android:singleLine="true"
-                    android:inputType="textPassword" />
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/btn_save_admin_pwd"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/btn_height_sm"
-                android:layout_marginTop="@dimen/spacing_lg"
-                android:background="@drawable/bg_btn_accent"
-                android:textColor="@color/accent"
-                android:textSize="@dimen/txt_base"
-                android:textStyle="bold"
-                android:text="保存新密码" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/muted"
-                android:textSize="@dimen/txt_sm"
-                android:text="默认管理员密码：888888。修改后立即生效（当前验证会话不受影响）。"
-                android:layout_marginTop="@dimen/spacing_md" />
-        </LinearLayout>
-
-        <!-- ===== 超时件标注卡片 ===== -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_settings_card"
-            android:padding="@dimen/spacing_3xl"
-            android:layout_marginBottom="@dimen/spacing_2xl">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/muted"
-                android:textSize="@dimen/txt_sm"
-                android:textStyle="bold"
-                android:textAllCaps="true"
-                android:letterSpacing="0.06"
-                android:text="超时件标注"
-                android:layout_marginBottom="@dimen/spacing_xl" />
-
-            <!-- 显示超时件标注总开关 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
-
-                <LinearLayout
+                <Button
+                    android:id="@+id/btn_logout"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="@dimen/btn_height_lg"
                     android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_base"
-                        android:textStyle="bold"
-                        android:text="显示超时件标注" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/muted"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="开启后，满足条件的已出库包裹叠加三层标注，结果计数中显示超时出库数量"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginEnd="@dimen/spacing_lg" />
-                </LinearLayout>
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switch_timeout_mark_enabled"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/switch_height"
-                    android:minWidth="40dp"
-                    android:thumb="@drawable/switch_thumb"
-                    android:track="@drawable/switch_track" />
+                    android:background="@drawable/bg_btn_danger"
+                    android:textColor="@color/danger"
+                    android:textSize="@dimen/txt_md"
+                    android:textStyle="bold"
+                    android:text="退出登录"
+                    android:layout_marginStart="@dimen/spacing_md" />
             </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/divider_height"
-                android:background="@color/hair" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_base"
-                        android:textStyle="bold"
-                        android:text="标注最近 N 天的超时件" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/muted"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="remark 为超时出库且出库时间在最近 N 天内的包裹，叠加超时件三层标注；超出 N 天按普通已出库处理"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginEnd="@dimen/spacing_lg" />
-                </LinearLayout>
-
-                <Spinner
-                    android:id="@+id/spinner_timeout_mark_days"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/search_box_height"
-                    android:minWidth="84dp"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/card_margin_bottom" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- ===== 界面显示卡片：界面字号 ===== -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_settings_card"
-            android:padding="@dimen/spacing_3xl"
-            android:layout_marginBottom="@dimen/spacing_2xl">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/muted"
-                android:textSize="@dimen/txt_sm"
-                android:textStyle="bold"
-                android:textAllCaps="true"
-                android:letterSpacing="0.06"
-                android:text="界面显示"
-                android:layout_marginBottom="@dimen/spacing_xl" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_base"
-                        android:textStyle="bold"
-                        android:text="界面字号" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/muted"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="调整全应用文字大小，选择后立即生效"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginEnd="@dimen/spacing_lg" />
-                </LinearLayout>
-
-                <Spinner
-                    android:id="@+id/spinner_ui_font_scale"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/search_box_height"
-                    android:minWidth="100dp"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/card_margin_bottom" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/divider_height"
-                android:background="@color/hair" />
-
-            <!-- 手动控制竖向排列每行卡片数 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_base"
-                        android:textStyle="bold"
-                        android:text="手动控制每行卡片数" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/muted"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="开启后固定每行显示数量，关闭则按屏幕宽度自适应"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginEnd="@dimen/spacing_lg" />
-                </LinearLayout>
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switch_grid_manual_columns"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/switch_height"
-                    android:minWidth="40dp"
-                    android:thumb="@drawable/switch_thumb"
-                    android:track="@drawable/switch_track" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_base"
-                        android:textStyle="bold"
-                        android:text="竖屏时每行卡片数" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/muted"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="开启上方开关后生效"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginEnd="@dimen/spacing_lg" />
-                </LinearLayout>
-
-                <Spinner
-                    android:id="@+id/spinner_grid_manual_columns_portrait"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/search_box_height"
-                    android:minWidth="84dp"
-                    android:enabled="false"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/card_margin_bottom" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_base"
-                        android:textStyle="bold"
-                        android:text="横屏时每行卡片数" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/muted"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="开启上方开关后生效"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginEnd="@dimen/spacing_lg" />
-                </LinearLayout>
-
-                <Spinner
-                    android:id="@+id/spinner_grid_manual_columns_landscape"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/search_box_height"
-                    android:minWidth="84dp"
-                    android:enabled="false"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/card_margin_bottom" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- ===== 缓存管理卡片 ===== -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_settings_card"
-            android:padding="@dimen/spacing_3xl"
-            android:layout_marginBottom="@dimen/spacing_2xl">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/muted"
-                android:textSize="@dimen/txt_sm"
-                android:textStyle="bold"
-                android:textAllCaps="true"
-                android:letterSpacing="0.06"
-                android:text="缓存管理"
-                android:layout_marginBottom="@dimen/spacing_xl" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_base"
-                        android:textStyle="bold"
-                        android:text="图片缓存过期天数" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/muted"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="超过该天数的包裹图片自动清理"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginEnd="@dimen/spacing_lg" />
-                </LinearLayout>
-
-                <Spinner
-                    android:id="@+id/spinner_image_cache_days"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/search_box_height"
-                    android:minWidth="84dp"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/card_margin_bottom" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingVertical="@dimen/spacing_lg">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/ink2"
-                        android:textSize="@dimen/txt_base"
-                        android:textStyle="bold"
-                        android:text="日志保留天数" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/muted"
-                        android:textSize="@dimen/txt_sm"
-                        android:text="超过该天数的运行日志自动清理"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginEnd="@dimen/spacing_lg" />
-                </LinearLayout>
-
-                <Spinner
-                    android:id="@+id/spinner_log_retain_days"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/search_box_height"
-                    android:minWidth="84dp"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/card_margin_bottom" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/divider_height"
-                android:background="@color/hair" />
-
-            <Button
-                android:id="@+id/btn_clear_cache"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/btn_height_sm"
-                android:layout_marginTop="@dimen/spacing_lg"
-                android:background="@drawable/bg_btn_warning"
-                android:textColor="@color/warning"
-                android:textSize="@dimen/txt_base"
-                android:textStyle="bold"
-                android:text="一键清理缓存" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/muted"
-                android:textSize="@dimen/txt_sm"
-                android:text="清理本地包裹图片缓存与运行日志，释放存储空间"
-                android:layout_marginTop="@dimen/spacing_md" />
         </LinearLayout>
 
         <!-- ===== 界面风格卡片 ===== -->
@@ -805,6 +301,58 @@
                 android:letterSpacing="0.06"
                 android:text="界面风格"
                 android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <!-- 界面风格总开关 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="启用界面风格配置" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="关闭后禁用本区域配置"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_theme_enabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <LinearLayout
+                android:id="@+id/theme_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
             <!-- 三种模式：浅色 / 深色 / 自动 -->
             <LinearLayout
@@ -1134,10 +682,615 @@
                     android:text="自动模式将根据日出日落时间在浅色与深色之间自动切换。开启定位（需授权位置权限）后可自动计算当地日出日落时间，也可手动修改上方时间点。"
                     android:layout_marginTop="@dimen/spacing_md" />
             </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
+
+        <!-- ===== 进阶功能 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="进阶功能"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <!-- 进阶功能总开关：输入解锁码 admin 后显示高级配置卡片 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="进阶功能" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启后需输入解锁码 admin，显示超时件标注、界面显示、缓存管理、语音识别、TTS、日志输出、服务器连接配置"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_advanced_features"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
+            </LinearLayout>
+        </LinearLayout>
+
+
+        <!-- ===== 超时件标注卡片 ===== -->
+        <LinearLayout
+            android:id="@+id/card_timeout_mark"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="超时件标注"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <!-- 显示超时件标注总开关 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="显示超时件标注" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启后，满足条件的已出库包裹叠加三层标注，结果计数中显示超时出库数量"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_timeout_mark_enabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <LinearLayout
+                android:id="@+id/timeout_mark_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="标注最近 N 天的超时件" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="remark 为超时出库且出库时间在最近 N 天内的包裹，叠加超时件三层标注；超出 N 天按普通已出库处理"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_timeout_mark_days"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="84dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+
+        <!-- ===== 界面显示卡片：界面字号 ===== -->
+        <LinearLayout
+            android:id="@+id/card_ui_display"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="界面显示"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <!-- 界面显示总开关 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="启用界面显示配置" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="关闭后禁用本区域配置"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_ui_display_enabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <LinearLayout
+                android:id="@+id/ui_display_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="界面字号" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="调整全应用文字大小，选择后立即生效"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_ui_font_scale"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="100dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <!-- 手动控制竖向排列每行卡片数 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="手动控制每行卡片数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启后固定每行显示数量，关闭则按屏幕宽度自适应"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_grid_manual_columns"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="竖屏时每行卡片数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启上方开关后生效"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_grid_manual_columns_portrait"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="84dp"
+                    android:enabled="false"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="横屏时每行卡片数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="开启上方开关后生效"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_grid_manual_columns_landscape"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="84dp"
+                    android:enabled="false"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+
+        <!-- ===== 缓存管理卡片 ===== -->
+        <LinearLayout
+            android:id="@+id/card_cache_mgmt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="缓存管理"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <!-- 缓存管理总开关 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="启用缓存管理配置" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="关闭后禁用本区域配置"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_cache_mgmt_enabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/switch_height"
+                    android:minWidth="40dp"
+                    android:thumb="@drawable/switch_thumb"
+                    android:track="@drawable/switch_track" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <LinearLayout
+                android:id="@+id/cache_mgmt_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="图片缓存过期天数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="超过该天数的包裹图片自动清理"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_image_cache_days"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="84dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="@dimen/spacing_lg">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="日志保留天数" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="超过该天数的运行日志自动清理"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginEnd="@dimen/spacing_lg" />
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinner_log_retain_days"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/search_box_height"
+                    android:minWidth="84dp"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/card_margin_bottom" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/divider_height"
+                android:background="@color/hair" />
+
+            <Button
+                android:id="@+id/btn_clear_cache"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/btn_height_sm"
+                android:layout_marginTop="@dimen/spacing_lg"
+                android:background="@drawable/bg_btn_warning"
+                android:textColor="@color/warning"
+                android:textSize="@dimen/txt_base"
+                android:textStyle="bold"
+                android:text="一键清理缓存" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:text="清理本地包裹图片缓存与运行日志，释放存储空间"
+                android:layout_marginTop="@dimen/spacing_md" />
+            </LinearLayout>
+        </LinearLayout>
+
 
         <!-- ===== 语音识别配置卡片 ===== -->
         <LinearLayout
+            android:id="@+id/card_asr"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
@@ -1200,6 +1353,12 @@
                 android:layout_height="@dimen/divider_height"
                 android:background="@color/hair"
                 android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <LinearLayout
+                android:id="@+id/asr_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -1331,10 +1490,12 @@
                         android:layout_marginStart="@dimen/spacing_md" />
                 </LinearLayout>
             </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ===== TTS 语音播报配置卡片 ===== -->
         <LinearLayout
+            android:id="@+id/card_tts"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
@@ -1398,6 +1559,12 @@
                 android:layout_height="@dimen/divider_height"
                 android:background="@color/hair"
                 android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <LinearLayout
+                android:id="@+id/tts_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
             <!-- 播报音色 -->
             <LinearLayout
@@ -1609,10 +1776,12 @@
                     android:text="试听"
                     android:layout_marginStart="@dimen/spacing_md" />
             </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ===== 日志输出卡片 ===== -->
         <LinearLayout
+            android:id="@+id/card_logs"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
@@ -1670,6 +1839,12 @@
                     android:track="@drawable/switch_track" />
             </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/logs_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
             <Button
                 android:id="@+id/btn_view_logs"
                 android:layout_width="match_parent"
@@ -1697,10 +1872,12 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ===== 服务器连接卡片 ===== -->
         <LinearLayout
+            android:id="@+id/card_server_connect"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
@@ -1718,6 +1895,12 @@
                 android:letterSpacing="0.06"
                 android:text="服务器连接"
                 android:layout_marginBottom="@dimen/spacing_xl" />
+
+            <LinearLayout
+                android:id="@+id/server_connect_content_top"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
             <!-- 服务器IP -->
             <TextView
@@ -1752,6 +1935,7 @@
                 android:textSize="@dimen/txt_sm"
                 android:text="未连接"
                 android:layout_marginBottom="@dimen/spacing_xl" />
+            </LinearLayout>
 
             <!-- 服务器连接总开关 -->
             <LinearLayout
@@ -1798,6 +1982,12 @@
                 android:layout_height="@dimen/divider_height"
                 android:background="@color/hair"
                 android:layout_marginVertical="@dimen/spacing_xs" />
+
+            <LinearLayout
+                android:id="@+id/server_connect_content_bottom"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
             <!-- 各功能同步子开关 -->
             <TextView
@@ -1911,17 +2101,19 @@
                     android:text="保存IP" />
             </LinearLayout>
             </LinearLayout>
+            </LinearLayout>
 
-        <!-- ===== 登录按钮 ===== -->
-        <Button
-            android:id="@+id/btn_login"
+        <!-- 版本信息（设置页最下方，单文字显示） -->
+        <TextView
+            android:id="@+id/tv_version_footer"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/btn_height_lg"
-            android:background="@drawable/bg_btn_accent"
-            android:textColor="@color/accent"
-            android:textSize="@dimen/txt_md"
-            android:textStyle="bold"
-            android:text="重新登录" />
+            android:layout_height="wrap_content"
+            android:textColor="@color/muted"
+            android:textSize="@dimen/txt_xs"
+            android:gravity="center"
+            android:text="版本 1.5.0"
+            android:paddingTop="@dimen/spacing_sm"
+            android:paddingBottom="@dimen/spacing_lg" />
 
     </LinearLayout>
 </ScrollView>

@@ -137,7 +137,7 @@
                 android:textColor="@color/ink"
                 android:textSize="@dimen/txt_md"
                 android:textCursorDrawable="@null"
-                android:hint="搜索单号、收件人、取件码..."
+                android:hint="请输入手机尾号"
                 android:singleLine="true"
                 android:imeOptions="actionSearch"
                 android:paddingHorizontal="@dimen/spacing_sm" />

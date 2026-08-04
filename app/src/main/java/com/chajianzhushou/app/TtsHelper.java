@@ -147,7 +147,7 @@ public class TtsHelper {
         SharedPreferences prefs = ctx.getApplicationContext()
                 .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         // TTS 总开关
-        boolean ttsEnabled = prefs.getBoolean(KEY_TTS_ENABLED, true);
+        boolean ttsEnabled = prefs.getBoolean(KEY_TTS_ENABLED, false);
         if (!ttsEnabled) {
             notifyDone();
             return;

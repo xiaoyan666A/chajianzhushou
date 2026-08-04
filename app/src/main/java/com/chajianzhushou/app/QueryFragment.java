@@ -225,6 +225,18 @@ public class QueryFragment extends Fragment {
         tvNoResults = view.findViewById(R.id.tv_no_results);
         loadingMask = view.findViewById(R.id.loading_mask);
 
+        // 统一滚动监听：懒加载 + 历史面板跟随输入框重定位
+        // （不再由 attach/detach 反复挂/卸，避免滚动后历史面板脱离输入框）
+        if (scrollView != null) {
+            scrollView.setOnScrollChangeListener((v, sx, sy, osx, osy) -> {
+                if (!isViewReady) return;
+                try {
+                    if (historyPanelHelper != null) historyPanelHelper.repositionToInput();
+                } catch (Throwable ignore) {}
+                if (currentScrollListener != null) currentScrollListener.run();
+            });
+        }
+
         // 自动刷新指示器初始状态：暗色静止（圆环样式，空闲为静态暗环）
         autoRefreshIndicator = view.findViewById(R.id.auto_refresh_indicator);
         autoRefreshLabel = view.findViewById(R.id.auto_refresh_label);
@@ -272,7 +284,7 @@ public class QueryFragment extends Fragment {
         syncQueryEnabled = prefs.getBoolean("sync_query_enabled", true);
 
         // Voice button state: disabled when ASR is off
-        boolean asrEnabled = prefs.getBoolean("asr_enabled", true);
+        boolean asrEnabled = prefs.getBoolean("asr_enabled", false);
         updateVoiceButtonState(asrEnabled);
 
         // Sync callback — only connect SSE if server connection is enabled
@@ -360,6 +372,8 @@ public class QueryFragment extends Fragment {
         btnTypePhone.setOnClickListener(v -> setSearchType("phoneTail"));
         btnTypePickup.setOnClickListener(v -> setSearchType("pickupCode"));
         btnTypeBill.setOnClickListener(v -> setSearchType("billCode"));
+        // 初始化时同步一次输入框提示文字（与默认查询类型一致）
+        setSearchType(searchType);
         updateTypeButtons();
 
         // Clear button
@@ -472,7 +486,7 @@ public class QueryFragment extends Fragment {
         // Voice button
         if (btnVoice != null) {
             btnVoice.setOnClickListener(v -> {
-                if (!prefs.getBoolean("asr_enabled", true)) {
+        if (!prefs.getBoolean("asr_enabled", false)) {
                     safeToast("语音识别未开启，请在设置中开启");
                     return;
                 }
@@ -537,7 +551,7 @@ public class QueryFragment extends Fragment {
         if (!isViewReady) return;
         try {
             SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
-            updateVoiceButtonState(prefs.getBoolean("asr_enabled", true));
+        updateVoiceButtonState(prefs.getBoolean("asr_enabled", false));
             boolean wasConnected = serverConnectEnabled;
             serverConnectEnabled = prefs.getBoolean("server_connect_enabled", false);
             syncQueryEnabled = prefs.getBoolean("sync_query_enabled", true);
@@ -771,6 +785,16 @@ public class QueryFragment extends Fragment {
         searchType = (type == null || type.isEmpty()) ? "phoneTail" : type;
         Log.d(TAG, "搜索类型切换: " + searchType);
         try { LogRecorder.info(requireContext(), "Query", "搜索类型切换", searchType); } catch (Exception ignore) {}
+        // 输入框提示文字跟随查询类型变化：手机尾号 / 取件码 / 运单号
+        if (etBillCode != null) {
+            if ("pickupCode".equals(searchType)) {
+                etBillCode.setHint("请输入取件码");
+            } else if ("billCode".equals(searchType)) {
+                etBillCode.setHint("请输入运单号");
+            } else {
+                etBillCode.setHint("请输入手机尾号");
+            }
+        }
         // 注意：切换类型不停止自动刷新循环，下一轮自动刷新会按新类型继续查询
         updateTypeButtons();
     }
@@ -2421,7 +2445,6 @@ public class QueryFragment extends Fragment {
 
     private void attachScrollLoadMoreListener() {
         if (scrollView == null || !isViewReady) return;
-        detachScrollLoadMoreListener();
         currentScrollListener = () -> {
             if (scrollView == null || resultsContainer == null || !isViewReady) return;
             if (isLoadingMore) return;
@@ -2438,16 +2461,10 @@ public class QueryFragment extends Fragment {
                 loadMoreItems();
             }
         };
-        scrollView.setOnScrollChangeListener((v, sx, sy, osx, osy) -> {
-            if (currentScrollListener != null) currentScrollListener.run();
-        });
     }
 
     private void detachScrollLoadMoreListener() {
         currentScrollListener = null;
-        if (scrollView != null) {
-            scrollView.setOnScrollChangeListener(null);
-        }
     }
 
     private void loadMoreItems() {

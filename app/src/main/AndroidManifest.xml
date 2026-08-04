@@ -18,18 +18,26 @@
         android:theme="@style/Theme.Chajianzhushou"
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
-        <!-- MainActivity：注意不要声明 uiMode，否则 AppCompat 切换主题时不重建 Activity，界面不实时刷新 -->
+        <!-- LoginActivity：启动入口，未登录时显示登录界面；configChanges 不能声明 uiMode -->
         <activity
-            android:name=".MainActivity"
+            android:name=".LoginActivity"
             android:exported="true"
             android:theme="@style/Theme.Chajianzhushou"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|locale|layoutDirection|density"
-            android:windowSoftInputMode="adjustPan">
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- MainActivity：注意不要声明 uiMode，否则 AppCompat 切换主题时不重建 Activity，界面不实时刷新 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Chajianzhushou"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|locale|layoutDirection|density"
+            android:windowSoftInputMode="adjustPan" />
     </application>
 
 </manifest>

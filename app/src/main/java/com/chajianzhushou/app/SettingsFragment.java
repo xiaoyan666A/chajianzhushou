@@ -2,10 +2,12 @@ package com.chajianzhushou.app;
 
 import android.app.TimePickerDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.InputType;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -22,14 +24,15 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.AppCompatRadioButton;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.fragment.app.Fragment;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.util.Calendar;
 
 import okhttp3.Call;
@@ -78,7 +81,12 @@ public class SettingsFragment extends Fragment {
     private TextView tvAccountName;
     private TextView tvAccountId;
     private LinearLayout tvAccountStatus;
-    private TextView tvAppVersion;
+    private TextView tvStaffName;
+    private TextView tvStaffPost;
+    private TextView tvStaffAccount;
+    private TextView tvStaffDepotCode;
+    private TextView tvVersionFooter;
+    private boolean staffInfoLoaded = false;
 
     // Views - Voice Recognition
     private SwitchCompat switchAsrEnabled;
@@ -112,6 +120,34 @@ public class SettingsFragment extends Fragment {
     private SwitchCompat switchSyncSettings;
     private TextView tvConnectionStatus;
     private Button btnLogin;
+    private Button btnLogout;
+
+    // Views - 功能区总开关（界面显示/缓存管理/界面风格）
+    private SwitchCompat switchUiDisplayEnabled;
+    private SwitchCompat switchCacheMgmtEnabled;
+    private SwitchCompat switchThemeEnabled;
+
+    // Views - 各功能区子设置项容器（总开关关闭时整体隐藏）
+    private View timeoutMarkContent;
+    private View uiDisplayContent;
+    private View cacheMgmtContent;
+    private View themeContent;
+    private View asrContent;
+    private View ttsContent;
+    private View logsContent;
+    private View serverConnectContentTop;
+    private View serverConnectContentBottom;
+
+    // Views - 进阶功能（输入解锁码 admin 后显示高级配置卡片）
+    private SwitchCompat switchAdvancedFeatures;
+    private View cardAsr;
+    private View cardTts;
+    private View cardLogs;
+    private View cardServerConnect;
+    private View cardTimeoutMark;
+    private View cardUiDisplay;
+    private View cardCacheMgmt;
+    private boolean advancedUnlockBusy = false;
 
     // Views - 界面风格（Theme）
     private View themeOptLight;
@@ -126,12 +162,6 @@ public class SettingsFragment extends Fragment {
     private Button btnThemeLocate;
     private TextView tvThemeHint;
     private Runnable autoThemeTick;   // 自动模式每分钟重算一次
-
-    // Views - 管理员密码（访问控制，与电脑端统一机制）
-    private EditText etAdminCurPwd;
-    private EditText etAdminNewPwd;
-    private EditText etAdminConfirmPwd;
-    private Button btnSaveAdminPwd;
 
     // Views - 超时件标注
     private Spinner spinnerTimeoutMarkDays;
@@ -214,13 +244,17 @@ public class SettingsFragment extends Fragment {
         tvAccountName = view.findViewById(R.id.tv_account_name);
         tvAccountId = view.findViewById(R.id.tv_account_id);
         tvAccountStatus = view.findViewById(R.id.tv_account_status);
-        tvAppVersion = view.findViewById(R.id.tv_app_version);
+        tvStaffName = view.findViewById(R.id.tv_staff_name);
+        tvStaffPost = view.findViewById(R.id.tv_staff_post);
+        tvStaffAccount = view.findViewById(R.id.tv_staff_account);
+        tvStaffDepotCode = view.findViewById(R.id.tv_staff_depot_code);
+        tvVersionFooter = view.findViewById(R.id.tv_version_footer);
         // 应用版本：动态读取真实 versionName，避免与 build.gradle 中版本号不同步
         try {
             String ver = requireContext().getPackageManager()
                     .getPackageInfo(requireContext().getPackageName(), 0).versionName;
-            if (tvAppVersion != null && ver != null && ver.length() > 0) {
-                tvAppVersion.setText(ver);
+            if (tvVersionFooter != null && ver != null && ver.length() > 0) {
+                tvVersionFooter.setText("版本 " + ver);
             }
         } catch (Exception ignore) {}
 
@@ -258,6 +292,7 @@ public class SettingsFragment extends Fragment {
         switchSyncSettings = view.findViewById(R.id.switch_sync_settings);
         tvConnectionStatus = view.findViewById(R.id.tv_connection_status);
         btnLogin = view.findViewById(R.id.btn_login);
+        btnLogout = view.findViewById(R.id.btn_logout);
 
         // 界面风格（Theme）
         themeOptLight = view.findViewById(R.id.theme_opt_light);
@@ -273,13 +308,6 @@ public class SettingsFragment extends Fragment {
         tvThemeHint = view.findViewById(R.id.tv_theme_hint);
         bindThemeViews();
 
-        // 管理员密码（访问控制）
-        etAdminCurPwd = view.findViewById(R.id.et_admin_cur_pwd);
-        etAdminNewPwd = view.findViewById(R.id.et_admin_new_pwd);
-        etAdminConfirmPwd = view.findViewById(R.id.et_admin_confirm_pwd);
-        btnSaveAdminPwd = view.findViewById(R.id.btn_save_admin_pwd);
-        if (btnSaveAdminPwd != null) btnSaveAdminPwd.setOnClickListener(v -> saveAdminPwd());
-
         // 显示超时件标注总开关
         switchTimeoutMarkEnabled = view.findViewById(R.id.switch_timeout_mark_enabled);
         if (switchTimeoutMarkEnabled != null) {
@@ -287,6 +315,7 @@ public class SettingsFragment extends Fragment {
                 if (isLoadingSettings) return;
                 settingsStore.set(SettingsStore.KEY_TIMEOUT_MARK_ENABLED, isChecked);
                 postSettings("timeoutMarkEnabled", isChecked);
+                setContentVisible(timeoutMarkContent, isChecked);
                 Log.d(TAG, "显示超时件标注: " + isChecked);
                 try { LogRecorder.info(requireContext(), "Settings", "显示超时件标注", String.valueOf(isChecked)); } catch (Exception ignore) {}
             });
@@ -443,6 +472,78 @@ public class SettingsFragment extends Fragment {
             });
         }
 
+        // ===== 功能区总开关（界面显示/缓存管理/界面风格）=====
+        switchUiDisplayEnabled = view.findViewById(R.id.switch_ui_display_enabled);
+        switchCacheMgmtEnabled = view.findViewById(R.id.switch_cache_mgmt_enabled);
+        switchThemeEnabled = view.findViewById(R.id.switch_theme_enabled);
+
+        if (switchUiDisplayEnabled != null) {
+            switchUiDisplayEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isLoadingSettings) return;
+                settingsStore.set(SettingsStore.KEY_UI_DISPLAY_ENABLED, isChecked);
+                applyUiDisplayEnabled(isChecked);
+                Log.d(TAG, "界面显示总开关: " + isChecked);
+                try { LogRecorder.info(requireContext(), "Settings", "界面显示总开关", String.valueOf(isChecked)); } catch (Exception ignore) {}
+            });
+        }
+        if (switchCacheMgmtEnabled != null) {
+            switchCacheMgmtEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isLoadingSettings) return;
+                settingsStore.set(SettingsStore.KEY_CACHE_MGMT_ENABLED, isChecked);
+                applyCacheMgmtEnabled(isChecked);
+                Log.d(TAG, "缓存管理总开关: " + isChecked);
+                try { LogRecorder.info(requireContext(), "Settings", "缓存管理总开关", String.valueOf(isChecked)); } catch (Exception ignore) {}
+            });
+        }
+        if (switchThemeEnabled != null) {
+            switchThemeEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isLoadingSettings) return;
+                settingsStore.set(SettingsStore.KEY_THEME_ENABLED, isChecked);
+                applyThemeEnabled(isChecked);
+                Log.d(TAG, "界面风格总开关: " + isChecked);
+                try { LogRecorder.info(requireContext(), "Settings", "界面风格总开关", String.valueOf(isChecked)); } catch (Exception ignore) {}
+            });
+        }
+
+        // 各功能区子设置项容器
+        timeoutMarkContent = view.findViewById(R.id.timeout_mark_content);
+        uiDisplayContent = view.findViewById(R.id.ui_display_content);
+        cacheMgmtContent = view.findViewById(R.id.cache_mgmt_content);
+        themeContent = view.findViewById(R.id.theme_content);
+        asrContent = view.findViewById(R.id.asr_content);
+        ttsContent = view.findViewById(R.id.tts_content);
+        logsContent = view.findViewById(R.id.logs_content);
+        serverConnectContentTop = view.findViewById(R.id.server_connect_content_top);
+        serverConnectContentBottom = view.findViewById(R.id.server_connect_content_bottom);
+
+        // ===== 进阶功能：输入解锁码 admin 后显示高级配置卡片 =====
+        switchAdvancedFeatures = view.findViewById(R.id.switch_advanced_features);
+        cardAsr = view.findViewById(R.id.card_asr);
+        cardTts = view.findViewById(R.id.card_tts);
+        cardLogs = view.findViewById(R.id.card_logs);
+        cardServerConnect = view.findViewById(R.id.card_server_connect);
+        cardTimeoutMark = view.findViewById(R.id.card_timeout_mark);
+        cardUiDisplay = view.findViewById(R.id.card_ui_display);
+        cardCacheMgmt = view.findViewById(R.id.card_cache_mgmt);
+
+        if (switchAdvancedFeatures != null) {
+            switchAdvancedFeatures.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isLoadingSettings || advancedUnlockBusy) return;
+                if (isChecked) {
+                    // 先回弹，验证解锁码通过后才真正开启并显示高级配置
+                    advancedUnlockBusy = true;
+                    switchAdvancedFeatures.setChecked(false);
+                    advancedUnlockBusy = false;
+                    showAdvancedUnlockDialog();
+                } else {
+                    settingsStore.set(SettingsStore.KEY_ADVANCED_FEATURES_ENABLED, false);
+                    applyAdvancedFeatures(false);
+                    Log.d(TAG, "进阶功能: 关闭");
+                    try { LogRecorder.info(requireContext(), "Settings", "进阶功能", "关闭"); } catch (Exception ignore) {}
+                }
+            });
+        }
+
         apiService = new ApiService(requireContext());
         mainHandler = new Handler(Looper.getMainLooper());
         ttsHelper = TtsHelper.getInstance();
@@ -463,6 +564,7 @@ public class SettingsFragment extends Fragment {
                 if (isLoadingSettings) return;
                 settingsStore.set(SettingsStore.KEY_ASR_ENABLED, isChecked);
                 postSettings("asrEnabled", isChecked);
+                setContentVisible(asrContent, isChecked);
             });
         }
 
@@ -473,6 +575,7 @@ public class SettingsFragment extends Fragment {
                 settingsStore.set(SettingsStore.KEY_TTS_ENABLED, isChecked);
                 postSettings("ttsEnabled", isChecked);
                 if (!isChecked && ttsHelper != null) ttsHelper.stop();
+                setContentVisible(ttsContent, isChecked);
             });
         }
 
@@ -481,6 +584,7 @@ public class SettingsFragment extends Fragment {
             switchLogsEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 if (isLoadingSettings) return;
                 settingsStore.set(SettingsStore.KEY_LOGS_ENABLED, isChecked);
+                setContentVisible(logsContent, isChecked);
             });
         }
 
@@ -504,6 +608,8 @@ public class SettingsFragment extends Fragment {
                 LogRecorder.info(requireContext(), "Settings", "服务器连接开关", String.valueOf(isChecked));
                 settingsStore.set(SettingsStore.KEY_SERVER_CONNECT, isChecked);
                 updateSyncSubSwitches(isChecked);
+                setContentVisible(serverConnectContentTop, isChecked);
+                setContentVisible(serverConnectContentBottom, isChecked);
                 if (isChecked) {
                     loadAccountInfo();
                 }
@@ -679,6 +785,10 @@ public class SettingsFragment extends Fragment {
         if (btnLogin != null) {
             btnLogin.setOnClickListener(v -> doLogin());
         }
+        // ---- 退出登录：清除本机凭据与 token，返回登录界面 ---- //
+        if (btnLogout != null) {
+            btnLogout.setOnClickListener(v -> logout());
+        }
 
         // Load saved preferences
         loadLocalPrefs();
@@ -689,6 +799,9 @@ public class SettingsFragment extends Fragment {
             loadSettings();
         } else {
             isLoadingSettings = false;
+            // 直连模式下用本机保存的兔喜账号信息填充账号卡片
+            updateAccountFromLoginStore();
+            loadStaffInfo();
         }
 
         return view;
@@ -699,6 +812,9 @@ public class SettingsFragment extends Fragment {
         super.onResume();
         if (isAdded() && isViewReady && serverConnectEnabled) {
             loadAccountInfo();
+        } else if (isAdded() && isViewReady) {
+            updateAccountFromLoginStore();
+            loadStaffInfo();
         }
     }
 
@@ -713,7 +829,12 @@ public class SettingsFragment extends Fragment {
         tvAccountName = null;
         tvAccountId = null;
         tvAccountStatus = null;
-        tvAppVersion = null;
+        tvStaffName = null;
+        tvStaffPost = null;
+        tvStaffAccount = null;
+        tvStaffDepotCode = null;
+        tvVersionFooter = null;
+        staffInfoLoaded = false;
         switchAsrEnabled = null;
         spinnerAutoCloseMinutes = null;
         spinnerAutoRefresh = null;
@@ -736,6 +857,27 @@ public class SettingsFragment extends Fragment {
         switchSyncSettings = null;
         tvConnectionStatus = null;
         btnLogin = null;
+        btnLogout = null;
+        switchAdvancedFeatures = null;
+        cardAsr = null;
+        cardTts = null;
+        cardLogs = null;
+        cardServerConnect = null;
+        cardTimeoutMark = null;
+        cardUiDisplay = null;
+        cardCacheMgmt = null;
+        switchUiDisplayEnabled = null;
+        switchCacheMgmtEnabled = null;
+        switchThemeEnabled = null;
+        timeoutMarkContent = null;
+        uiDisplayContent = null;
+        cacheMgmtContent = null;
+        themeContent = null;
+        asrContent = null;
+        ttsContent = null;
+        logsContent = null;
+        serverConnectContentTop = null;
+        serverConnectContentBottom = null;
         themeOptLight = null;
         themeOptDark = null;
         themeOptAuto = null;
@@ -748,10 +890,6 @@ public class SettingsFragment extends Fragment {
         btnThemeLocate = null;
         tvThemeHint = null;
         autoThemeTick = null;
-        etAdminCurPwd = null;
-        etAdminNewPwd = null;
-        etAdminConfirmPwd = null;
-        btnSaveAdminPwd = null;
         spinnerTimeoutMarkDays = null;
         switchTimeoutMarkEnabled = null;
         spinnerUiFontScale = null;
@@ -1005,9 +1143,9 @@ public class SettingsFragment extends Fragment {
             if (switchSyncSettings != null) switchSyncSettings.setChecked(prefs.getBoolean(SettingsStore.KEY_SYNC_SETTINGS, true));
 
             // ASR / TTS / Logs 开关
-            if (switchAsrEnabled != null) switchAsrEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_ASR_ENABLED, true));
-            if (switchTtsEnabled != null) switchTtsEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_TTS_ENABLED, true));
-            if (switchLogsEnabled != null) switchLogsEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_LOGS_ENABLED, true));
+            if (switchAsrEnabled != null) switchAsrEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_ASR_ENABLED, false));
+            if (switchTtsEnabled != null) switchTtsEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_TTS_ENABLED, false));
+            if (switchLogsEnabled != null) switchLogsEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_LOGS_ENABLED, false));
 
             // TTS voice/spinner
             if (spinnerTtsVoice != null) spinnerTtsVoice.setSelection(prefs.getInt(SettingsStore.KEY_TTS_VOICE, 0));
@@ -1104,6 +1242,27 @@ public class SettingsFragment extends Fragment {
             // 界面风格：恢复选中态 + 自动模式启动每分钟检查
             updateThemeUI();
             startAutoThemeTick();
+
+            // 功能区总开关（默认开启），并按状态禁用对应区域配置
+            if (switchUiDisplayEnabled != null) {
+                switchUiDisplayEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_UI_DISPLAY_ENABLED, true));
+            }
+            if (switchCacheMgmtEnabled != null) {
+                switchCacheMgmtEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_CACHE_MGMT_ENABLED, true));
+            }
+            if (switchThemeEnabled != null) {
+                switchThemeEnabled.setChecked(prefs.getBoolean(SettingsStore.KEY_THEME_ENABLED, true));
+            }
+            applyUiDisplayEnabled(switchUiDisplayEnabled != null && switchUiDisplayEnabled.isChecked());
+            applyCacheMgmtEnabled(switchCacheMgmtEnabled != null && switchCacheMgmtEnabled.isChecked());
+            applyThemeEnabled(switchThemeEnabled != null && switchThemeEnabled.isChecked());
+            // 同步恢复各功能区子设置项容器的可见性（含已有总开关的卡片）
+            applyAllSectionVisibility();
+            // 进阶功能：恢复开关状态并应用高级配置卡片显隐
+            if (switchAdvancedFeatures != null) {
+                switchAdvancedFeatures.setChecked(prefs.getBoolean(SettingsStore.KEY_ADVANCED_FEATURES_ENABLED, false));
+            }
+            applyAdvancedFeatures(switchAdvancedFeatures != null && switchAdvancedFeatures.isChecked());
         } catch (Exception ignore) {}
     }
 
@@ -1119,6 +1278,117 @@ public class SettingsFragment extends Fragment {
                         : getResources().getColor(R.color.muted, requireContext().getTheme()));
             } catch (Exception ignore) {}
         }
+    }
+
+    // ===== 功能区总开关禁用逻辑 =====
+
+    private void applyUiDisplayEnabled(boolean on) {
+        setContentVisible(uiDisplayContent, on);
+        setGroupEnabled(spinnerUiFontScale, on);
+        setGroupEnabled(switchGridManualColumns, on);
+        boolean manual = switchGridManualColumns != null && switchGridManualColumns.isChecked();
+        setGroupEnabled(spinnerGridManualColumnsPortrait, on && manual);
+        setGroupEnabled(spinnerGridManualColumnsLandscape, on && manual);
+    }
+
+    private void applyCacheMgmtEnabled(boolean on) {
+        setContentVisible(cacheMgmtContent, on);
+        setGroupEnabled(spinnerImageCacheDays, on);
+        setGroupEnabled(spinnerLogRetainDays, on);
+        setGroupEnabled(btnClearCache, on);
+    }
+
+    private void applyThemeEnabled(boolean on) {
+        setContentVisible(themeContent, on);
+        if (themeOptLight != null) { themeOptLight.setEnabled(on); themeOptLight.setClickable(on); }
+        if (themeOptDark != null) { themeOptDark.setEnabled(on); themeOptDark.setClickable(on); }
+        if (themeOptAuto != null) { themeOptAuto.setEnabled(on); themeOptAuto.setClickable(on); }
+        setGroupEnabled(rbThemeLight, on);
+        setGroupEnabled(rbThemeDark, on);
+        setGroupEnabled(rbThemeAuto, on);
+        if (etSunriseTime != null) { etSunriseTime.setEnabled(on); etSunriseTime.setClickable(on); }
+        if (etSunsetTime != null) { etSunsetTime.setEnabled(on); etSunsetTime.setClickable(on); }
+        setGroupEnabled(btnThemeLocate, on);
+    }
+
+    /** 根据各功能区总开关状态统一恢复子设置项容器的可见性（含已有总开关的卡片） */
+    private void applyAllSectionVisibility() {
+        setContentVisible(timeoutMarkContent, switchTimeoutMarkEnabled != null && switchTimeoutMarkEnabled.isChecked());
+        setContentVisible(uiDisplayContent, switchUiDisplayEnabled != null && switchUiDisplayEnabled.isChecked());
+        setContentVisible(cacheMgmtContent, switchCacheMgmtEnabled != null && switchCacheMgmtEnabled.isChecked());
+        setContentVisible(themeContent, switchThemeEnabled != null && switchThemeEnabled.isChecked());
+        setContentVisible(asrContent, switchAsrEnabled != null && switchAsrEnabled.isChecked());
+        setContentVisible(ttsContent, switchTtsEnabled != null && switchTtsEnabled.isChecked());
+        setContentVisible(logsContent, switchLogsEnabled != null && switchLogsEnabled.isChecked());
+        boolean serverOn = switchServerConnect != null && switchServerConnect.isChecked();
+        setContentVisible(serverConnectContentTop, serverOn);
+        setContentVisible(serverConnectContentBottom, serverOn);
+    }
+
+    private void setContentVisible(View v, boolean visible) {
+        if (v != null) {
+            try { v.setVisibility(visible ? View.VISIBLE : View.GONE); } catch (Exception ignore) {}
+        }
+    }
+
+    private void setGroupEnabled(View v, boolean enabled) {
+        if (v != null) {
+            try { v.setEnabled(enabled); } catch (Exception ignore) {}
+        }
+    }
+
+    // ===== 进阶功能（解锁码 admin）=====
+
+    /** 根据进阶功能开关状态显示/隐藏高级配置卡片 */
+    private void applyAdvancedFeatures(boolean on) {
+        setContentVisible(cardAsr, on);
+        setContentVisible(cardTts, on);
+        setContentVisible(cardLogs, on);
+        setContentVisible(cardServerConnect, on);
+        setContentVisible(cardTimeoutMark, on);
+        setContentVisible(cardUiDisplay, on);
+        setContentVisible(cardCacheMgmt, on);
+    }
+
+    /** 打开进阶功能时弹出解锁码输入框，输入 admin 通过后才真正开启 */
+    private void showAdvancedUnlockDialog() {
+        if (!isViewReady) return;
+        final EditText et = new EditText(requireContext());
+        et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        et.setHint("请输入解锁码");
+        et.setTextSize(17f);
+        et.setBackgroundResource(R.drawable.bg_input);
+        try {
+            int pad = getResources().getDimensionPixelSize(R.dimen.spacing_lg);
+            et.setPadding(pad, pad, pad, pad);
+        } catch (Exception ignore) {}
+        try {
+            et.setTextColor(getResources().getColor(R.color.ink, requireContext().getTheme()));
+            et.setHintTextColor(getResources().getColor(R.color.muted, requireContext().getTheme()));
+        } catch (Exception ignore) {}
+
+        new AlertDialog.Builder(requireContext())
+                .setTitle("进阶功能")
+                .setMessage("请输入解锁码以显示超时件标注、界面显示、缓存管理、语音识别、TTS、日志输出、服务器连接配置")
+                .setView(et)
+                .setPositiveButton("确认", (d, w) -> {
+                    String code = et.getText().toString().trim();
+                    if ("admin".equals(code)) {
+                        settingsStore.set(SettingsStore.KEY_ADVANCED_FEATURES_ENABLED, true);
+                        // 置位开关（busy 标志防止监听器再次弹出解锁框）
+                        advancedUnlockBusy = true;
+                        if (switchAdvancedFeatures != null) switchAdvancedFeatures.setChecked(true);
+                        advancedUnlockBusy = false;
+                        applyAdvancedFeatures(true);
+                        Log.d(TAG, "进阶功能: 解锁成功");
+                        try { LogRecorder.info(requireContext(), "Settings", "进阶功能", "解锁成功"); } catch (Exception ignore) {}
+                        safeToast("进阶功能已开启");
+                    } else {
+                        safeToast("解锁码错误");
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     // ===== Helpers =====
@@ -1498,101 +1768,41 @@ public class SettingsFragment extends Fragment {
         }
     }
 
-    // ===== 管理员密码（访问控制） =====
-
-    private void saveAdminPwd() {
-        if (!isViewReady) return;
-        String curPwd = etAdminCurPwd != null ? etAdminCurPwd.getText().toString() : "";
-        String newPwd = etAdminNewPwd != null ? etAdminNewPwd.getText().toString() : "";
-        String confirmPwd = etAdminConfirmPwd != null ? etAdminConfirmPwd.getText().toString() : "";
-
-        if (newPwd.isEmpty()) { safeToast("请输入新密码"); return; }
-        if (newPwd.length() < 4) { safeToast("新密码至少 4 位"); return; }
-        if (!newPwd.equals(confirmPwd)) { safeToast("两次输入的新密码不一致"); return; }
-        if (!AdminGate.verify(requireContext(), curPwd)) { safeToast("当前密码错误"); return; }
-
-        if (AdminGate.changePassword(requireContext(), curPwd, newPwd)) {
-            try {
-                LogRecorder.info(requireContext(), "SETTINGS", "管理员密码已修改", "修改成功（哈希存储，不保存明文）");
-            } catch (Exception ignore) {}
-            if (etAdminNewPwd != null) etAdminNewPwd.setText("");
-            if (etAdminConfirmPwd != null) etAdminConfirmPwd.setText("");
-            safeToast("管理员密码已修改");
-        } else {
-            safeToast("修改失败，请重试");
-        }
-    }
-
     private void doLogin() {
         if (!isViewReady || btnLogin == null) return;
-        Log.d(TAG, "独立执行登录（不依赖电脑端）");
-        try { LogRecorder.info(requireContext(), "Settings", "独立执行登录", "不依赖电脑端"); } catch (Exception ignore) {}
+        final LoginStore store = new LoginStore(requireContext());
+        if (!store.hasCredentials()) {
+            safeToast("未保存兔喜账号，请先退出登录并在登录界面登录");
+            return;
+        }
+        Log.d(TAG, "使用保存的凭据重新登录（不依赖电脑端）");
+        try { LogRecorder.info(requireContext(), "Settings", "重新登录", "使用保存的凭据"); } catch (Exception ignore) {}
         try { btnLogin.setEnabled(false); btnLogin.setText("登录中..."); } catch (Exception ignore) {}
 
         Threads.io().execute(() -> {
             boolean success = false;
             String errMsg = "未知错误";
-            String userId = null;
-            String accountName = null;
+            String userId = "";
             try {
-                DirectApiClient directClient = new DirectApiClient(requireContext());
-                // 通过反射调用 private doLogin() 方法；或者直接 ensureLogin 内部会触发登录
-                java.lang.reflect.Method m = DirectApiClient.class.getDeclaredMethod("ensureLogin");
-                m.setAccessible(true);
-                JSONObject authResult = (JSONObject) m.invoke(directClient);
+                JSONObject authResult = DirectApiClient.login(requireContext(), store.getUsername(), store.getPassword());
                 userId = authResult == null ? "" : authResult.optString("userId", "");
                 success = authResult != null && userId.length() > 0;
                 if (!success) errMsg = "登录失败，userId为空";
-                else {
-                    // Save auth token locally
-                    try {
-                        String accessToken = authResult.optString("accessToken", "");
-                        SharedPreferences prefs = settingsStore.prefs();
-                        prefs.edit()
-                                .putString("local_access_token", accessToken)
-                                .putString("local_user_id", userId)
-                                .putLong("local_token_expires", System.currentTimeMillis() + 24 * 60 * 60 * 1000L)
-                                .apply();
-                    } catch (Exception ignore) {}
-                    accountName = "查件助手";
-                }
             } catch (Exception e) {
                 errMsg = e.getMessage() == null ? "登录异常" : e.getMessage();
-                Log.w(TAG, "独立登录出错: " + errMsg);
-                try { LogRecorder.error(requireContext(), "Settings", "独立登录出错", errMsg); } catch (Exception ignore) {}
+                Log.w(TAG, "重新登录出错: " + errMsg);
+                try { LogRecorder.error(requireContext(), "Settings", "重新登录出错", errMsg); } catch (Exception ignore) {}
             }
 
             final boolean finalOk = success;
             final String finalErr = errMsg;
-            final String finalUserId = userId;
-            final String finalAccountName = accountName;
             mainHandler.post(() -> {
                 if (!isViewReady) return;
                 if (btnLogin != null) {
                     try { btnLogin.setEnabled(true); btnLogin.setText("重新登录"); } catch (Exception ignore) {}
                 }
                 if (finalOk) {
-                    // 更新 UI 账号信息显示
-                    if (tvAccountId != null && finalUserId.length() > 0) {
-                        try { tvAccountId.setText("ID: " + finalUserId); } catch (Exception ignore) {}
-                    }
-                    if (tvAccountName != null && finalAccountName != null) {
-                        try { tvAccountName.setText(finalAccountName); } catch (Exception ignore) {}
-                    }
-                    if (tvAccountStatus != null) {
-                        try {
-                            tvAccountStatus.setBackgroundResource(R.drawable.bg_status_pending);
-                            int childCount = tvAccountStatus.getChildCount();
-                            for (int i = 0; i < childCount; i++) {
-                                View child = tvAccountStatus.getChildAt(i);
-                                if (child instanceof TextView) {
-                                    ((TextView) child).setTextColor(getResources().getColor(R.color.accent, requireContext().getTheme()));
-                                    ((TextView) child).setText("已登录");
-                                }
-                            }
-                        } catch (Exception ignore) {}
-                    }
-                    // 更新连接状态
+                    updateAccountFromLoginStore();
                     updateConnectionStatus(true);
                     safeToast("登录成功");
                 } else {
@@ -1601,5 +1811,102 @@ public class SettingsFragment extends Fragment {
                 }
             });
         });
+    }
+
+    /** 直连模式下用本机保存的兔喜账号信息填充账号卡片 */
+    private void updateAccountFromLoginStore() {
+        if (!isViewReady) return;
+        try {
+            LoginStore store = new LoginStore(requireContext());
+            if (!store.hasCredentials()) return;
+            if (tvAccountName != null) tvAccountName.setText(store.getMaskedUsername());
+            String uid = store.getUserId();
+            if (tvAccountId != null) {
+                tvAccountId.setText(uid.length() > 0 ? "ID: " + uid : "ID: --");
+            }
+            if (tvAccountStatus != null) {
+                tvAccountStatus.setBackgroundResource(R.drawable.bg_status_pending);
+                int childCount = tvAccountStatus.getChildCount();
+                for (int i = 0; i < childCount; i++) {
+                    View child = tvAccountStatus.getChildAt(i);
+                    if (child instanceof TextView) {
+                        ((TextView) child).setText("已登录");
+                        ((TextView) child).setTextColor(
+                                requireContext().getResources().getColor(R.color.accent, requireContext().getTheme()));
+                    }
+                }
+            }
+        } catch (Exception ignore) {}
+    }
+
+    /** 直连模式下异步加载门店信息与账号信息（getStaffByStaffCodeWithLoginCheck），成功后覆盖填充 */
+    private void loadStaffInfo() {
+        if (!isViewReady || staffInfoLoaded) return;
+        staffInfoLoaded = true;
+        try {
+            final DirectApiClient client = new DirectApiClient(requireContext());
+            Threads.io().execute(() -> {
+                try {
+                    final JSONObject info = client.getStaffInfo();
+                    if (info == null) return;
+                    mainHandler.post(() -> applyStaffInfo(info));
+                } catch (Exception e) {
+                    Log.w(TAG, "获取门店/账号信息失败: " + e.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "获取门店/账号信息异常: " + e.getMessage());
+        }
+    }
+
+    /** 将门店/账号信息填充到账号信息卡片 */
+    private void applyStaffInfo(JSONObject info) {
+        if (!isViewReady) return;
+        try {
+            String depotShortName = info.optString("depotShortName", "");
+            String name = info.optString("name", "");
+            String account = info.optString("account", "");
+            String depotCode = info.optString("depotCode", "");
+            String id = info.optString("id", "");
+            String postName = "";
+            if (info.has("posts") && !info.isNull("posts")) {
+                JSONArray posts = info.getJSONArray("posts");
+                if (posts.length() > 0) {
+                    postName = posts.getJSONObject(0).optString("postName", "");
+                }
+            }
+            if (tvAccountName != null && depotShortName.length() > 0) {
+                tvAccountName.setText(depotShortName);
+            }
+            if (tvAccountId != null) {
+                tvAccountId.setText(id.length() > 0 ? "ID: " + id : "ID: --");
+            }
+            if (tvStaffName != null && name.length() > 0) tvStaffName.setText(name);
+            if (tvStaffPost != null && postName.length() > 0) tvStaffPost.setText(postName);
+            if (tvStaffAccount != null && account.length() > 0) tvStaffAccount.setText(account);
+            if (tvStaffDepotCode != null && depotCode.length() > 0) tvStaffDepotCode.setText(depotCode);
+        } catch (Exception ignore) {}
+    }
+
+    /** 退出登录：确认后清除本机凭据与 token，返回登录界面 */
+    private void logout() {
+        if (!isViewReady) return;
+        new AlertDialog.Builder(requireContext())
+                .setTitle("退出登录")
+                .setMessage("将清除本机保存的兔喜账号与登录令牌，并返回登录界面。确定退出吗？")
+                .setPositiveButton("退出", (d, w) -> {
+                    try {
+                        new LoginStore(requireContext()).clearAll();
+                        LogRecorder.info(requireContext(), "Settings", "退出登录", "已清除本机凭据与token");
+                    } catch (Exception ignore) {}
+                    try {
+                        Intent i = new Intent(requireContext(), LoginActivity.class);
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        startActivity(i);
+                    } catch (Exception ignore) {}
+                    if (getActivity() != null) getActivity().finish();
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 }

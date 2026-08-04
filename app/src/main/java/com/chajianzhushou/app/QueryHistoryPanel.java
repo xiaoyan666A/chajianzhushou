@@ -265,6 +265,30 @@ public class QueryHistoryPanel {
         if (panel != null) panel.setVisibility(View.GONE);
     }
 
+    /** 面板可见时按输入框当前屏幕位置重定位（滚动页面时保持与输入框贴合） */
+    public void repositionToInput() {
+        if (panel == null || panel.getVisibility() != View.VISIBLE) return;
+        try {
+            View root = host.root();
+            EditText input = host.input();
+            if (root != null && input != null) {
+                int[] rootLoc = new int[2];
+                int[] boxLoc = new int[2];
+                root.getLocationOnScreen(rootLoc);
+                input.getLocationOnScreen(boxLoc);
+                int top = boxLoc[1] - rootLoc[1] + input.getHeight();
+                int pad = context.getResources().getDimensionPixelSize(R.dimen.pad_page_h);
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) panel.getLayoutParams();
+                lp.gravity = Gravity.TOP;
+                lp.topMargin = top;
+                lp.leftMargin = pad;
+                lp.rightMargin = pad;
+                lp.width = FrameLayout.LayoutParams.MATCH_PARENT;
+                panel.setLayoutParams(lp);
+            }
+        } catch (Throwable ignore) {}
+    }
+
     /** 设置/恢复历史 chip 的样式：armed=true 红色边框+"×"显示；false 恢复默认样式 */
     private void applyArmedStyle(View container, boolean armed) {
         if (container == null) return;
