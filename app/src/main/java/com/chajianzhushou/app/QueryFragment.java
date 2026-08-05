@@ -128,7 +128,7 @@ public class QueryFragment extends Fragment {
     private final List<String> allImageUrls = new ArrayList<>();
     private final List<String> allTrackingNos = new ArrayList<>();
     // 直连模式懒加载：单号+原始路径 → 已解析成功的图片 URL（供预览列表重建与重绘时复用）
-    private final java.util.Map<String, String> resolvedImageUrls = new java.util.concurrent.ConcurrentHashMap<>();
+    private ImageUrlResolver imageUrlResolver;
     // 出入库照片对比：单号 → {另一张照片URL, 名称(入库照/出库照)}，供预览大图切换
     private final java.util.Map<String, String[]> comparePhotoMap = new java.util.concurrent.ConcurrentHashMap<>();
     // 超时件标注配置：remark=="超时出库" 且 出库时间在"最近N天"内的已出库包裹，叠加三层标注
@@ -142,18 +142,9 @@ public class QueryFragment extends Fragment {
     private boolean serverConnectEnabled = false;
     private boolean syncQueryEnabled = true;
 
-    // Auto-refresh
-    private Handler autoRefreshHandler;
+    // Auto-refresh（调度与指示器由 AutoRefreshController 负责）
     private Handler mainHandler = new Handler(Looper.getMainLooper());
-    private Runnable autoRefreshRunnable;
-    /** 实际触发自动刷新前 1s 提前激活指示器（变绿转动、文字变亮）的回调 */
-    private Runnable autoRefreshPreActivate;
-
-    // 自动刷新顶部指示器：空闲时暗色静止，执行自动刷新时变绿转动，完成时变暗停止
-    private View autoRefreshIndicator;
-    private TextView autoRefreshLabel;
-    private android.view.animation.RotateAnimation autoRefreshSpinAnim;
-
+    private AutoRefreshController autoRefreshController;
     // TTS
     private TtsHelper ttsHelper;
 
@@ -277,19 +268,32 @@ public class QueryFragment extends Fragment {
         }
 
         // 自动刷新指示器初始状态：暗色静止（圆环样式，空闲为静态暗环）
-        autoRefreshIndicator = view.findViewById(R.id.auto_refresh_indicator);
-        autoRefreshLabel = view.findViewById(R.id.auto_refresh_label);
-        autoRefreshSpinAnim = new android.view.animation.RotateAnimation(0f, 360f,
-                android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f,
-                android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f);
-        autoRefreshSpinAnim.setDuration(800);
-        autoRefreshSpinAnim.setRepeatCount(android.view.animation.Animation.INFINITE);
-        autoRefreshSpinAnim.setInterpolator(new android.view.animation.LinearInterpolator());
-        setAutoRefreshIndicatorActive(false);
+        // 自动刷新控制器：调度 + 指示器（空闲暗色静止，执行时变绿转动）
+        autoRefreshController = new AutoRefreshController();
+        autoRefreshController.attach(requireContext(), new AutoRefreshController.Host() {
+            @Override public boolean isViewReady() { return QueryFragment.this.isViewReady; }
+            @Override public boolean isUserTouching() { return QueryFragment.this.isUserTouching; }
+            @Override public int getIntervalSeconds() { return QueryFragment.this.getAutoRefreshSeconds(); }
+            @Override public void onTick() { QueryFragment.this.performAutoRefreshTick(); }
+            @Override public void onActiveChanged(boolean active) {
+                if (switchGridView != null) switchGridView.setEnabled(!active);
+            }
+        }, view.findViewById(R.id.auto_refresh_indicator), view.findViewById(R.id.auto_refresh_label));
 
         apiService = new ApiService(requireContext());
         syncClient = new SyncClient(apiService);
         directApiClient = new DirectApiClient(requireContext());
+        imageUrlResolver = new ImageUrlResolver();
+        imageUrlResolver.attach(directApiClient, apiService);
+        imageUrlResolver.setUrlLoadedListener((billCode, url) -> {
+            // 解析成功：补充到预览列表（供跨卡片翻页）
+            synchronized (allImageUrls) {
+                if (!allImageUrls.contains(url)) {
+                    allImageUrls.add(url);
+                    allTrackingNos.add(billCode);
+                }
+            }
+        });
         packageCardFactory = new PackageCardFactory(requireContext(), new PackageCardFactory.Host() {
             @Override public boolean isTimeoutPackage(JSONObject item) { return QueryFragment.this.isTimeoutPackage(item); }
             @Override public String loadCardImage(ImageView iv, String trackingNumber, String imageUrl, String rawImgPath) {
@@ -319,7 +323,7 @@ public class QueryFragment extends Fragment {
             }
             @Override public void toast(String msg) { safeToast(msg); }
         });
-        autoRefreshHandler = new Handler(Looper.getMainLooper());
+
         ttsHelper = TtsHelper.getInstance();
         ttsHelper.init(requireContext());
         isViewReady = true;
@@ -826,8 +830,8 @@ public class QueryFragment extends Fragment {
         tvNoResults = null;
         loadingMask = null;
         apiService = null;
-        autoRefreshHandler = null;
-        autoRefreshRunnable = null;
+        if (autoRefreshController != null) autoRefreshController.release();
+        autoRefreshController = null;
 
         super.onDestroyView();
     }
@@ -1148,39 +1152,7 @@ public class QueryFragment extends Fragment {
     /** 自动刷新指示器：active=true 圆环变绿转动、"自动刷新中"文字变亮绿色；false 圆环变暗停止、文字变暗但保持显示。
      *  当"自动刷新间隔"设置为关闭(0)时，文字与圆环整体隐藏。自动刷新执行中禁止切换"竖向排列"开关。 */
     private void setAutoRefreshIndicatorActive(boolean active) {
-        if (autoRefreshIndicator == null && autoRefreshLabel == null) return;
-        try {
-            // 自动刷新间隔关闭时：完全隐藏文字与圆环
-            boolean enabled = getAutoRefreshSeconds() > 0;
-            // 仅在自动刷新"执行中"禁用"竖向排列"开关（避免切换与刷新冲突）；
-            // 自动刷新间隔关闭时开关保持可用，不受影响。
-            if (switchGridView != null) switchGridView.setEnabled(!active);
-            if (active) {
-                autoRefreshIndicator.setBackgroundTintList(
-                        android.content.res.ColorStateList.valueOf(0xFF00F5D4));
-                autoRefreshIndicator.setAlpha(1f);
-                autoRefreshIndicator.clearAnimation();
-                autoRefreshIndicator.startAnimation(autoRefreshSpinAnim);
-                if (autoRefreshLabel != null) {
-                    autoRefreshLabel.setVisibility(enabled ? View.VISIBLE : View.GONE);
-                    autoRefreshLabel.setTextColor(getResources().getColor(R.color.accent, requireContext().getTheme()));
-                    autoRefreshLabel.setAlpha(1f);
-                }
-                autoRefreshIndicator.setVisibility(enabled ? View.VISIBLE : View.GONE);
-            } else {
-                autoRefreshIndicator.clearAnimation();
-                autoRefreshIndicator.setBackgroundTintList(
-                        android.content.res.ColorStateList.valueOf(0xFF8A9099));
-                autoRefreshIndicator.setAlpha(0.35f);
-                if (autoRefreshLabel != null) {
-                    // 文字保持显示但变灰、变暗、更透明（与圆环空闲态视觉一致）
-                    autoRefreshLabel.setVisibility(enabled ? View.VISIBLE : View.GONE);
-                    autoRefreshLabel.setTextColor(getResources().getColor(R.color.muted, requireContext().getTheme()));
-                    autoRefreshLabel.setAlpha(0.5f);
-                }
-                autoRefreshIndicator.setVisibility(enabled ? View.VISIBLE : View.GONE);
-            }
-        } catch (Exception ignore) {}
+        if (autoRefreshController != null) autoRefreshController.setActive(active);
     }
 
     private int getAutoRefreshSeconds() {
@@ -1193,58 +1165,27 @@ public class QueryFragment extends Fragment {
     }
 
     private void startAutoRefreshLoop() {
-        if (autoRefreshHandler == null) return;
-        stopAutoRefresh();
-        int secs = getAutoRefreshSeconds();
-        if (secs <= 0) return;
-        long intervalMs = secs * 1000L;
-        long preMs = Math.max(0, intervalMs - 1000L);
-        // 实际触发自动刷新前 1s：提前让"自动刷新中"文字与圆环变绿转动，提示用户即将刷新
-        autoRefreshPreActivate = () -> {
-            if (!isViewReady || autoRefreshHandler == null) return;
-            setAutoRefreshIndicatorActive(true);
-        };
-        autoRefreshHandler.postDelayed(autoRefreshPreActivate, preMs);
-        autoRefreshRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (!isViewReady || autoRefreshHandler == null) return;
-                // 用户正在触摸滑动时跳过本次自动刷新，延迟 2 秒后重试
-                if (isUserTouching) {
-                    autoRefreshHandler.postDelayed(this, 2000);
-                    return;
-                }
-                if (etBillCode != null) {
-                    String q = etBillCode.getText().toString().trim();
-                    if (q.length() == 0) {
-                        // 输入框被清空：保留列表，继续按"最后一次查询条件"自动刷新
-                        q = lastQueriedBillCode;
-                    }
-                    if (q.length() > 0) {
-                        performQuery(false, true, q);
-                        return;
-                    }
-                }
-                // 从未查询过且输入为空：没有可继续刷新的条件，停止并复位指示器
-                stopAutoRefresh();
-            }
-        };
-        autoRefreshHandler.postDelayed(autoRefreshRunnable, intervalMs);
+        if (autoRefreshController != null) autoRefreshController.startLoop();
     }
 
     private void stopAutoRefresh() {
-        if (autoRefreshHandler != null) {
-            if (autoRefreshRunnable != null) {
-                try { autoRefreshHandler.removeCallbacks(autoRefreshRunnable); } catch (Exception ignore) {}
-                autoRefreshRunnable = null;
+        if (autoRefreshController != null) autoRefreshController.stop();
+    }
+
+    /** 自动刷新一轮：读取查询条件并执行（输入框清空时沿用最后一次查询值） */
+    private void performAutoRefreshTick() {
+        if (!isViewReady) return;
+        if (etBillCode != null) {
+            String q = etBillCode.getText().toString().trim();
+            if (q.length() == 0) {
+                q = lastQueriedBillCode;
             }
-            if (autoRefreshPreActivate != null) {
-                try { autoRefreshHandler.removeCallbacks(autoRefreshPreActivate); } catch (Exception ignore) {}
-                autoRefreshPreActivate = null;
+            if (q.length() > 0) {
+                performQuery(false, true, q);
+                return;
             }
         }
-        // 停止自动刷新时兜底隐藏"自动刷新中"文字与旋转（确保非加载状态不残留暗显文字）
-        setAutoRefreshIndicatorActive(false);
+        stopAutoRefresh();
     }
 
     // ===== Query =====
@@ -1300,7 +1241,7 @@ public class QueryFragment extends Fragment {
             justOutboundBillCodes.clear();
             // 手动查询：清空图片 URL 解析缓存，重新解析签名 URL
             // （否则"一键清理缓存"后仍会复用内存里已过期的 URL，图片显示过期）
-            resolvedImageUrls.clear();
+            if (imageUrlResolver != null) imageUrlResolver.clearCache();
         }
         // 记录查询历史（输入框聚焦时展示"最近查询"）；自动刷新/语音识别不计入
         if (recordHistory && !isAuto) {
@@ -2133,7 +2074,7 @@ public class QueryFragment extends Fragment {
                                 item.optString("fileImgPath", ""),
                                 item.optString("inSignImg", ""),
                                 item.optString("imgName", ""));
-                        String cached = resolvedImageUrls.get(imgUrlKey(tno, rawPath));
+                        String cached = imageUrlResolver != null ? imageUrlResolver.getCachedUrl(tno, rawPath) : null;
                         if (cached != null) resolved = cached;
                     }
                     if (resolved == null || resolved.length() == 0) continue;
@@ -2511,7 +2452,7 @@ public class QueryFragment extends Fragment {
 
             // URL 变化 → 重新加载（内存/磁盘缓存按 URL 校验，旧图自动作废，换到新照片）
             ImageLoader.with(apiService.getOkHttpClient()).load(newUrl, tno, iv, R.drawable.bg_image_placeholder);
-            if (tno.length() > 0) resolvedImageUrls.put(imgUrlKey(tno, rawImgPath), newUrl);
+            if (tno.length() > 0 && imageUrlResolver != null) imageUrlResolver.putCachedUrl(tno, rawImgPath, newUrl);
 
             // 若图片预览正打开且展示的正是该单号 → 同步切换大图
             try {
@@ -2544,29 +2485,13 @@ public class QueryFragment extends Fragment {
      * 返回当前可用的完整 URL；未解析完成返回空串（解析成功后由回调自行加载）。
      */
     private String loadCardImage(ImageView iv, String trackingNumber, String imageUrl, String rawImgPath) {
-        if (iv == null) return "";
-        if (imageUrl.length() > 0 && apiService != null) {
-            String resolved = apiService.resolveImageUrl(imageUrl);
-            ImageLoader.with(apiService.getOkHttpClient()).load(resolved, trackingNumber, iv, R.drawable.bg_image_placeholder);
-            return resolved;
-        }
-        iv.setImageResource(R.drawable.bg_image_placeholder);
-        if (rawImgPath.length() > 0 && trackingNumber.length() > 0 && directApiClient != null) {
-            String cachedUrl = resolvedImageUrls.get(imgUrlKey(trackingNumber, rawImgPath));
-            if (cachedUrl != null && cachedUrl.length() > 0) {
-                // 本会话已解析过相同路径：直接加载，不再重复请求 URL
-                ImageLoader.with(apiService.getOkHttpClient()).load(cachedUrl, trackingNumber, iv, R.drawable.bg_image_placeholder);
-            } else {
-                resolveAndLoad(iv, trackingNumber, rawImgPath);
-            }
+        if (imageUrlResolver != null) {
+            return imageUrlResolver.loadCardImage(iv, trackingNumber, imageUrl, rawImgPath);
         }
         return "";
     }
 
     /** 图片 URL 缓存键：单号 + 原始图片路径（路径变化=换新照片，旧 URL 不可复用） */
-    private static String imgUrlKey(String billCode, String rawImgPath) {
-        return (billCode == null ? "" : billCode) + "\u0001" + (rawImgPath == null ? "" : rawImgPath);
-    }
 
     /**
      * 直连模式：按原始图片路径异步解析 URL 并加载。
@@ -2574,40 +2499,17 @@ public class QueryFragment extends Fragment {
      * 解析成功的 URL 同时记入 resolvedImageUrls，供预览列表重建时补充。
      */
     private void resolveAndLoad(final ImageView iv, final String billCode, final String rawImgPath) {
-        if (iv == null || billCode == null || billCode.length() == 0 || rawImgPath == null || rawImgPath.length() == 0) return;
-        final String marker = "raw:" + billCode + ":" + rawImgPath;
-        iv.setTag(R.id.image_loader_tag, marker);
-        try {
-            if (directApiClient == null) return;
-            directApiClient.resolveImageUrl(billCode, rawImgPath, new DirectApiClient.ImageUrlCallback() {
-                @Override
-                public void onUrl(final String url) {
-                    if (!isViewReady) return;
-                    mainHandler.post(() -> {
-                        try {
-                            if (url == null || url.length() == 0) return;
-                            if (iv.getTag(R.id.image_loader_tag) == null) return;
-                            if (!marker.equals(iv.getTag(R.id.image_loader_tag))) return; // 卡片已复用/重建，丢弃迟到结果
-                            if (apiService == null) return;
-                            ImageLoader.with(apiService.getOkHttpClient()).load(url, billCode, iv, R.drawable.bg_image_placeholder);
-                            // 记录已解析 URL：预览列表重建时使用
-                            if (billCode.length() > 0) resolvedImageUrls.put(imgUrlKey(billCode, rawImgPath), url);
-                            synchronized (allImageUrls) {
-                                if (!allImageUrls.contains(url)) {
-                                    allImageUrls.add(url);
-                                    allTrackingNos.add(billCode);
-                                }
-                            }
-                        } catch (Throwable ignore) {}
-                    });
-                }
-
-                @Override
-                public void onError(String error) {
-                    Log.w(TAG, "图片URL解析失败 billCode=" + billCode + " err=" + error);
+        if (imageUrlResolver != null) {
+            imageUrlResolver.resolveAndLoad(iv, billCode, rawImgPath, (bCode, url) -> {
+                // 解析成功：补充到预览列表（供跨卡片翻页）
+                synchronized (allImageUrls) {
+                    if (!allImageUrls.contains(url)) {
+                        allImageUrls.add(url);
+                        allTrackingNos.add(billCode);
+                    }
                 }
             });
-        } catch (Throwable ignore) {}
+        }
     }
 
     /** 异步解析"另一张照片"URL（入库照/出库照），结果记入 comparePhotoMap 供预览切换 */
