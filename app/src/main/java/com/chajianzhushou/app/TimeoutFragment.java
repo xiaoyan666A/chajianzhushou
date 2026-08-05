@@ -97,7 +97,7 @@ public class TimeoutFragment extends Fragment {
         // Check server connection preference
         try {
             SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
-            serverConnectEnabled = prefs.getBoolean("server_connect_enabled", false);
+            serverConnectEnabled = prefs.getBoolean(SettingsStore.KEY_SERVER_CONNECT, false);
         } catch (Exception ignore) {}
 
         if (btnRefresh != null) {
@@ -145,7 +145,7 @@ public class TimeoutFragment extends Fragment {
         // 每次回到页面时重读取服务器连接偏好，避免与设置界面变更不同步
         try {
             SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
-            serverConnectEnabled = prefs.getBoolean("server_connect_enabled", false);
+            serverConnectEnabled = prefs.getBoolean(SettingsStore.KEY_SERVER_CONNECT, false);
         } catch (Exception ignore) {}
         if (isAdded()) loadTimeoutPackages();
         // 每分钟刷新"立即超时出库"按钮的可点击状态（到 20:30 自动恢复可点）
@@ -359,7 +359,7 @@ public class TimeoutFragment extends Fragment {
         // 每次查询时重读取服务器连接偏好，保证最新状态
         try {
             SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
-            serverConnectEnabled = prefs.getBoolean("server_connect_enabled", false);
+            serverConnectEnabled = prefs.getBoolean(SettingsStore.KEY_SERVER_CONNECT, false);
         } catch (Exception ignore) {}
 
         Log.d(TAG, "加载超时件列表: serverConnect=" + serverConnectEnabled);
@@ -382,6 +382,7 @@ public class TimeoutFragment extends Fragment {
                     isQuerying = false;
                     if (!isViewReady) return;
                     showLoading(false);
+                    UiErrorHandler.handle(requireContext(), error);
                     safeToast("加载失败: " + error);
                 }
             });
@@ -401,6 +402,7 @@ public class TimeoutFragment extends Fragment {
                     requireActivity().runOnUiThread(() -> {
                         isQuerying = false;
                         showLoading(false);
+                        UiErrorHandler.handle(requireContext(), e.getMessage());
                         safeToast("加载失败: " + e.getMessage());
                     });
                 }
@@ -772,6 +774,7 @@ public class TimeoutFragment extends Fragment {
                         btnOutbound.setText("立即超时出库");
                     } catch (Exception ignore) {}
                 }
+                UiErrorHandler.handle(requireContext(), error);
                 safeToast("出库失败: " + error);
             }
         });

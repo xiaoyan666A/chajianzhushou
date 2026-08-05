@@ -312,7 +312,7 @@ public class QueryFragment extends Fragment {
             @Override public boolean isPicOutboundEnabled() {
                 try {
                     return requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE)
-                            .getBoolean("pic_outbound_enabled", false);
+                            .getBoolean(SettingsStore.KEY_PIC_OUTBOUND_ENABLED, false);
                 } catch (Exception e) {
                     return false;
                 }
@@ -330,11 +330,11 @@ public class QueryFragment extends Fragment {
         if (switchGridView != null) switchGridView.setChecked(isGridView);
 
         // Server sync state
-        serverConnectEnabled = prefs.getBoolean("server_connect_enabled", false);
-        syncQueryEnabled = prefs.getBoolean("sync_query_enabled", true);
+        serverConnectEnabled = prefs.getBoolean(SettingsStore.KEY_SERVER_CONNECT, false);
+        syncQueryEnabled = prefs.getBoolean(SettingsStore.KEY_SYNC_QUERY, true);
 
         // Voice button state: disabled when ASR is off
-        boolean asrEnabled = prefs.getBoolean("asr_enabled", false);
+        boolean asrEnabled = prefs.getBoolean(SettingsStore.KEY_ASR_ENABLED, false);
         updateVoiceButtonState(asrEnabled);
 
         // Sync callback — only connect SSE if server connection is enabled
@@ -555,7 +555,7 @@ public class QueryFragment extends Fragment {
         // Voice button
         if (btnVoice != null) {
             btnVoice.setOnClickListener(v -> {
-        if (!prefs.getBoolean("asr_enabled", false)) {
+        if (!prefs.getBoolean(SettingsStore.KEY_ASR_ENABLED, false)) {
                     safeToast("语音识别未开启，请在设置中开启");
                     return;
                 }
@@ -625,15 +625,15 @@ public class QueryFragment extends Fragment {
         if (!isViewReady) return;
         try {
             SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
-        updateVoiceButtonState(prefs.getBoolean("asr_enabled", false));
-            boolean multiTail = prefs.getBoolean("multi_tail_enabled", false);
+        updateVoiceButtonState(prefs.getBoolean(SettingsStore.KEY_ASR_ENABLED, false));
+            boolean multiTail = prefs.getBoolean(SettingsStore.KEY_MULTI_TAIL_ENABLED, false);
             if (multiTail != multiTailEnabled) {
                 multiTailEnabled = multiTail;
                 applyMultiTailMode();
             }
             boolean wasConnected = serverConnectEnabled;
-            serverConnectEnabled = prefs.getBoolean("server_connect_enabled", false);
-            syncQueryEnabled = prefs.getBoolean("sync_query_enabled", true);
+            serverConnectEnabled = prefs.getBoolean(SettingsStore.KEY_SERVER_CONNECT, false);
+            syncQueryEnabled = prefs.getBoolean(SettingsStore.KEY_SYNC_QUERY, true);
             if (serverConnectEnabled && !wasConnected) {
                 syncClient.connect();
             } else if (!serverConnectEnabled) {
@@ -1009,6 +1009,7 @@ public class QueryFragment extends Fragment {
                     }
                     @Override public void onError(String error) {
                         if (!isViewReady) return;
+                        UiErrorHandler.handle(requireContext(), error);
                         safeToast("出库失败: " + error);
                     }
                 });
@@ -1348,6 +1349,7 @@ public class QueryFragment extends Fragment {
                         if (!isViewReady) return;
                         showLoading(false);
                         setAutoRefreshIndicatorActive(false);
+                        UiErrorHandler.handle(requireContext(), error);
                         if (!isAuto) safeToast("查询失败: " + error);
                         // 查询失败时如果设置了自动刷新间隔且有输入，保持循环继续尝试
                         rescheduleAutoRefreshOnErrorOrEmpty();
@@ -1368,6 +1370,7 @@ public class QueryFragment extends Fragment {
                             isQuerying = false;
                             showLoading(false);
                             setAutoRefreshIndicatorActive(false);
+                            UiErrorHandler.handle(requireContext(), e.getMessage());
                             if (!isAuto) safeToast("查询失败: " + e.getMessage());
                             // 查询失败时如果设置了自动刷新间隔且有输入，保持循环继续尝试
                             rescheduleAutoRefreshOnErrorOrEmpty();
@@ -1379,6 +1382,7 @@ public class QueryFragment extends Fragment {
             isQuerying = false;
             showLoading(false);
             setAutoRefreshIndicatorActive(false);
+            UiErrorHandler.handle(requireContext(), e.getMessage());
             if (!isAuto) safeToast("查询失败: " + e.getMessage());
             // 查询失败时如果设置了自动刷新间隔且有输入，保持循环继续尝试
             rescheduleAutoRefreshOnErrorOrEmpty();
@@ -1415,6 +1419,7 @@ public class QueryFragment extends Fragment {
         if (response == null) {
             Log.w(TAG, "查询失败: 响应为空");
             try { LogRecorder.warn(requireContext(), "Query", "查询失败", "响应为空"); } catch (Exception ignore) {}
+            UiErrorHandler.handle(requireContext(), "查询失败: 响应为空");
             if (!isAuto) safeToast("查询失败: 响应为空");
             rescheduleAutoRefreshOnErrorOrEmpty();
             return;
@@ -1424,6 +1429,7 @@ public class QueryFragment extends Fragment {
         if (!ok) {
             Log.w(TAG, "查询失败: " + response.optString("error", "未知错误"));
             try { LogRecorder.warn(requireContext(), "Query", "查询失败", response.optString("error", "未知错误")); } catch (Exception ignore) {}
+            UiErrorHandler.handle(requireContext(), response.optString("error", "未知错误"));
             if (!isAuto) safeToast("查询失败: " + response.optString("error", "未知错误"));
             rescheduleAutoRefreshOnErrorOrEmpty();
             return;

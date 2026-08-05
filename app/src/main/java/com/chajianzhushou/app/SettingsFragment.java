@@ -767,8 +767,8 @@ public class SettingsFragment extends Fragment {
         String savedKey = "";
         try {
             SharedPreferences prefs = settingsStore.prefs();
-            savedKey = prefs.getString("mimo_api_key", "");
-            mimoKeyLocked = prefs.getBoolean("mimo_api_key_locked", false);
+            savedKey = prefs.getString(SettingsStore.KEY_MIMO_API_KEY, "");
+            mimoKeyLocked = prefs.getBoolean(SettingsStore.KEY_MIMO_API_KEY_LOCKED, false);
         } catch (Exception ignore) {}
         if (etMimoApiKey != null) {
             etMimoApiKey.setText(savedKey);
@@ -797,11 +797,11 @@ public class SettingsFragment extends Fragment {
                         // only update text when unlocking (allow edit), but also save when locking to ensure latest value
                     }
                     if (etMimoApiKey != null && mimoKeyLocked) {
-                        editor.putString("mimo_api_key", etMimoApiKey.getText().toString().trim());
+                        editor.putString(SettingsStore.KEY_MIMO_API_KEY, etMimoApiKey.getText().toString().trim());
                     } else if (etMimoApiKey != null) {
-                        editor.putString("mimo_api_key", etMimoApiKey.getText().toString().trim());
+                        editor.putString(SettingsStore.KEY_MIMO_API_KEY, etMimoApiKey.getText().toString().trim());
                     }
-                    editor.putBoolean("mimo_api_key_locked", mimoKeyLocked);
+                    editor.putBoolean(SettingsStore.KEY_MIMO_API_KEY_LOCKED, mimoKeyLocked);
                     editor.apply();
                 } catch (Exception ignore) {}
                 safeToast(mimoKeyLocked ? "Mimo API Key已锁定保存" : "Mimo API Key已解锁，可编辑");
@@ -1258,8 +1258,8 @@ public class SettingsFragment extends Fragment {
             }
 
             // Mimo API Key
-            if (etMimoApiKey != null) etMimoApiKey.setText(prefs.getString("mimo_api_key", ""));
-            mimoKeyLocked = prefs.getBoolean("mimo_api_key_locked", false);
+            if (etMimoApiKey != null) etMimoApiKey.setText(prefs.getString(SettingsStore.KEY_MIMO_API_KEY, ""));
+            mimoKeyLocked = prefs.getBoolean(SettingsStore.KEY_MIMO_API_KEY_LOCKED, false);
             if (etMimoApiKey != null) {
                 etMimoApiKey.setEnabled(!mimoKeyLocked);
                 etMimoApiKey.setFocusable(!mimoKeyLocked);

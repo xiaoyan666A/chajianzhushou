@@ -49,7 +49,7 @@ public class LoginActivity extends AppCompatActivity {
         if (MainActivity.sFontScale == 0f) {
             try {
                 SharedPreferences prefs = newBase.getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
-                MainActivity.sFontScale = prefs.getFloat("ui_font_scale", 1f);
+                MainActivity.sFontScale = prefs.getFloat(SettingsStore.KEY_UI_FONT_SCALE, 1f);
             } catch (Exception e) {
                 MainActivity.sFontScale = 1f;
             }

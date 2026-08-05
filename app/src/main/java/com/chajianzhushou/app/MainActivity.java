@@ -53,7 +53,7 @@ public class MainActivity extends AppCompatActivity {
         if (sFontScale == 0f) {
             try {
                 SharedPreferences prefs = newBase.getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
-                sFontScale = prefs.getFloat("ui_font_scale", 1f);
+                sFontScale = prefs.getFloat(SettingsStore.KEY_UI_FONT_SCALE, 1f);
             } catch (Exception e) {
                 sFontScale = 1f;
             }

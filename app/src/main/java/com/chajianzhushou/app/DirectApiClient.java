@@ -299,6 +299,35 @@ public class DirectApiClient {
         result.put("ysDt", store.getYsDt().length() > 0 ? store.getYsDt() : DEFAULT_YS_DT);
         return result;
     }
+    /**
+     * 统一构造 ZTO 网关 POST 请求（form-urlencoded：data=<url编码JSON> + 统一认证头）。
+     * @param url       网关地址
+     * @param zopName   X-Zop-Name 接口名
+     * @param caVersion X-Ca-Version（null/空则默认 1）
+     * @param svV       X-Sv-V（可为空）
+     * @param auth      认证信息（accessToken/userId/unionId/ysDt）；null 则不带头
+     * @param postData  已编码的 data 表单体
+     */
+    private Request buildZopRequest(String url, String zopName, String caVersion, String svV,
+                                    JSONObject auth, String postData) {
+        Request.Builder b = new Request.Builder()
+                .url(url)
+                .header("X-Zop-Name", zopName)
+                .header("X-Ca-Version", (caVersion == null || caVersion.isEmpty()) ? "1" : caVersion)
+                .header("X-App-Version", "4.51.5")
+                .header("User-Agent", "wanjiaExpress/4.51.5 (iPhone; iOS 26.6; Scale/3.00)");
+        if (svV != null && !svV.isEmpty()) b.header("X-Sv-V", svV);
+        if (auth != null) {
+            String token = auth.optString("accessToken", "");
+            b.header("x-iam-token", token);
+            b.header("token", token);
+            b.header("X-Userid", auth.optString("userId", ""));
+            b.header("X-Unionid", auth.optString("unionId", DEFAULT_UNION_ID));
+            b.header("X-Device-Id", DEFAULT_DEVICE_ID);
+            b.header("X-Ys-Dt", auth.optString("ysDt", DEFAULT_YS_DT));
+        }
+        return b.post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded"))).build();
+    }
 
     /**
      * 尝试用缓存的 refreshToken 无感换新 token（tuxi.spm.account.refreshToken，与官方 App 一致）。
@@ -313,22 +342,13 @@ public class DirectApiClient {
             data.put("refreshToken", refreshToken);
             String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
 
-            Request request = new Request.Builder()
-                    .url(LOGIN_URL)
-                    .header("X-Zop-Name", "tuxi.spm.account.refreshToken")
-                    .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
-                    .header("X-Ca-Version", "1")
-                    .header("x-iam-token", store.getAccessToken())
-                    .header("token", store.getAccessToken())
-                    .header("X-Unionid", store.getUnionId().length() > 0 ? store.getUnionId() : DEFAULT_UNION_ID)
-                    .header("X-Device-Id", DEFAULT_DEVICE_ID)
-                    .header("X-Userid", store.getUserId())
-                    .header("X-App-Version", "4.51.5")
-                    .header("X-Ys-Dt", store.getYsDt().length() > 0 ? store.getYsDt() : DEFAULT_YS_DT)
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
-                    .build();
 
+            JSONObject auth = new JSONObject();
+            auth.put("accessToken", store.getAccessToken());
+            auth.put("userId", store.getUserId());
+            auth.put("unionId", store.getUnionId());
+            auth.put("ysDt", store.getYsDt());
+            Request request = buildZopRequest(LOGIN_URL, "tuxi.spm.account.refreshToken", "1", "com.zto.ztoFamilyAPPStore_4.51.5", auth, postData);
             try (Response resp = client.newCall(request).execute()) {
                 if (resp.body() == null) return false;
                 JSONObject body = new JSONObject(resp.body().string());
@@ -374,21 +394,7 @@ public class DirectApiClient {
         String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
         String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
 
-        Request request = new Request.Builder()
-                .url(LOGIN_URL)
-                .header("X-Zop-Name", "getStaffByStaffCodeWithLoginCheck")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
-                .header("X-Ca-Version", "1")
-                .header("x-iam-token", token)
-                .header("token", token)
-                .header("X-Unionid", unionId)
-                .header("X-Device-Id", DEFAULT_DEVICE_ID)
-                .header("X-Userid", userId)
-                .header("X-App-Version", "4.51.5")
-                .header("X-Ys-Dt", ysDt)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
-                .build();
+        Request request = buildZopRequest(LOGIN_URL, "getStaffByStaffCodeWithLoginCheck", "1", "com.zto.ztoFamilyAPPStore_4.51.5", auth, postData);
 
         try (Response resp = client.newCall(request).execute()) {
             if (resp.body() == null) return null;
@@ -457,20 +463,7 @@ public class DirectApiClient {
         String postData = "data=" + URLEncoder.encode(data.toString(), "UTF-8");
 
         String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
-        return new Request.Builder()
-                .url("https://kdcs-wx-yd.zt-express.com/gateway.do/")
-                .header("X-Zop-Name", "getEncryptFileUrl")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
-                .header("X-Ca-Version", "1")
-                .header("x-iam-token", auth.getString("accessToken"))
-                .header("X-Unionid", DEFAULT_UNION_ID)
-                .header("X-Device-Id", DEFAULT_DEVICE_ID)
-                .header("X-Userid", auth.getString("userId"))
-                .header("X-App-Version", "4.51.5")
-                .header("X-Ys-Dt", ysDt)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
-                .build();
+        return buildZopRequest("https://kdcs-wx-yd.zt-express.com/gateway.do/", "getEncryptFileUrl", "1", "com.zto.ztoFamilyAPPStore_4.51.5", auth, postData);
     }
 
     // ===== getStockBillInfo：兔喜app详情API（用于超时件图片反查） =====
@@ -493,21 +486,7 @@ public class DirectApiClient {
         String deviceId = auth.optString("deviceId", DEFAULT_DEVICE_ID);
         String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
 
-        Request request = new Request.Builder()
-                .url("https://kdcs-wx-yd.zt-express.com/gateway.do/")
-                .header("X-Zop-Name", "tuxi.spm.read.detail.getStockBillInfo")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
-                .header("X-Ca-Version", "1")
-                .header("x-iam-token", token)
-                .header("token", token)
-                .header("X-Unionid", unionId)
-                .header("X-Device-Id", deviceId)
-                .header("X-Userid", userId)
-                .header("X-App-Version", "4.51.5")
-                .header("X-Ys-Dt", ysDt)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
-                .build();
+        Request request = buildZopRequest("https://kdcs-wx-yd.zt-express.com/gateway.do/", "tuxi.spm.read.detail.getStockBillInfo", "1", "com.zto.ztoFamilyAPPStore_4.51.5", auth, postData);
 
         try (Response resp = client.newCall(request).execute()) {
             if (resp.body() == null) return "";
@@ -575,21 +554,7 @@ public class DirectApiClient {
         String deviceId = auth.optString("deviceId", DEFAULT_DEVICE_ID);
         String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
 
-        Request request = new Request.Builder()
-                .url("https://kdcs-wx-lt.zt-express.com/gateway.do/")
-                .header("X-Zop-Name", "tuxi.spm.read.detail.getStockBillLog")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
-                .header("X-Ca-Version", "1")
-                .header("x-iam-token", token)
-                .header("token", token)
-                .header("X-Unionid", unionId)
-                .header("X-Device-Id", deviceId)
-                .header("X-Userid", userId)
-                .header("X-App-Version", "4.51.5")
-                .header("X-Ys-Dt", ysDt)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
-                .build();
+        Request request = buildZopRequest(LOGIN_URL, "tuxi.spm.read.detail.getStockBillLog", "1", "com.zto.ztoFamilyAPPStore_4.51.5", auth, postData);
 
         try (Response resp = client.newCall(request).execute()) {
             if (resp.body() == null) return null;
@@ -660,21 +625,7 @@ public class DirectApiClient {
 
         String postData = "data=" + URLEncoder.encode(queryData.toString(), "UTF-8");
 
-        Request request = new Request.Builder()
-                .url("https://kdcs-wx-yd.zt-express.com/gateway.do/")
-                .header("X-Zop-Name", "tuxi.spm.stock.read.queryScanEnterInfoAppByCode")
-                .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
-                .header("X-Ca-Version", "6")
-                .header("x-iam-token", token)
-                .header("token", token)
-                .header("X-Unionid", unionId)
-                .header("X-Device-Id", deviceId)
-                .header("X-Userid", userId)
-                .header("X-App-Version", "4.51.5")
-                .header("X-Ys-Dt", ysDt)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
-                .build();
+        Request request = buildZopRequest("https://kdcs-wx-yd.zt-express.com/gateway.do/", "tuxi.spm.stock.read.queryScanEnterInfoAppByCode", "6", "com.zto.ztoFamilyAPPStore_4.51.5", auth, postData);
 
         try (Response resp = client.newCall(request).execute()) {
             if (resp.body() == null) return null;
@@ -708,7 +659,28 @@ public class DirectApiClient {
         return queryPackages(search, type, false);
     }
 
+
+    /**
+     * 查询包裹（带 token 自动刷新重试）：
+     * 若查询时服务器提示 token 失效，先清旧 token 并尝试 refreshToken 无感换新，成功则自动重试一次；
+     * 仅当 refresh 也失败（需重新登录）时才抛出"登录已失效"。
+     */
     public JSONObject queryPackages(String search, String type, boolean pendingOnly) throws Exception {
+        try {
+            return doQueryPackages(search, type, pendingOnly);
+        } catch (TokenExpiredException tee) {
+            accessToken = null;
+            userId = null;
+            tokenExpiresAt = 0;
+            try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
+            if (tryRefreshToken()) {
+                // refresh 换新成功：自动重试一次，无需用户再次点击
+                return doQueryPackages(search, type, pendingOnly);
+            }
+            throw new Exception("登录已失效，请重新登录");
+        }
+    }
+    private JSONObject doQueryPackages(String search, String type, boolean pendingOnly) throws Exception {
         Log.d(TAG, "直接查询包裹: search=" + search + " type=" + type);
         try { LogRecorder.info(appContext, "DirectApi", "查询包裹", "search=" + search + " type=" + type); } catch (Exception ignore) {}
         JSONObject auth = ensureLogin();
@@ -785,20 +757,7 @@ public class DirectApiClient {
 
             String postData = "data=" + URLEncoder.encode(queryData.toString(), "UTF-8");
 
-            Request request = new Request.Builder()
-                    .url("https://" + HOST + "/gateway.do/")
-                    .header("X-Zop-Name", X_ZOP_NAME)
-                    .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
-                    .header("X-Ca-Version", "6")
-                    .header("x-iam-token", accessToken)
-                    .header("token", accessToken)
-                    .header("X-Userid", userId)
-                    .header("X-Unionid", unionId)
-                    .header("X-Device-Id", deviceId)
-                    .header("X-Ys-Dt", ysDt)
-                    .header("X-App-Version", "4.51.5")
-                    .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
-                    .build();
+            Request request = buildZopRequest("https://" + HOST + "/gateway.do/", X_ZOP_NAME, "6", "com.zto.ztoFamilyAPPStore_4.51.5", auth, postData);
 
             JSONObject body;
             try (Response resp = client.newCall(request).execute()) {
@@ -838,6 +797,8 @@ public class DirectApiClient {
                         tokenExpiresAt = 0;
                         // 仅清 accessToken（保留 refreshToken），下次 ensureLogin 先无感换新，失败再走密码登录
                         try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
+                        // token 失效：抛出专用异常，由 queryPackages 外层自动 refresh 后重试
+                        throw new TokenExpiredException(msg);
                     }
                     throw new Exception("查询失败: " + msg);
                 } else {
@@ -1333,20 +1294,7 @@ public class DirectApiClient {
                 String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
                 String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
 
-                Request request = new Request.Builder()
-                        .url(LOGIN_URL)
-                        .header("X-Zop-Name", "appUploadWaybillImageSync")
-                        .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
-                        .header("X-Ca-Version", "1")
-                        .header("x-iam-token", auth.getString("accessToken"))
-                        .header("X-Userid", auth.getString("userId"))
-                        .header("X-Unionid", unionId)
-                        .header("X-Device-Id", DEFAULT_DEVICE_ID)
-                        .header("X-Ys-Dt", ysDt)
-                        .header("X-App-Version", "4.51.5")
-                        .header("User-Agent", "wanjiaExpress/4.51.5 (iPhone; iOS 26.6; Scale/3.00)")
-                        .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
-                        .build();
+                Request request = buildZopRequest(LOGIN_URL, "appUploadWaybillImageSync", "1", "com.zto.ztoFamilyAPPStore_4.51.5", auth, postData);
 
                 try (Response resp = client.newCall(request).execute()) {
                     if (resp.body() == null) {
@@ -1390,20 +1338,7 @@ public class DirectApiClient {
                 String ysDt = auth.optString("ysDt", DEFAULT_YS_DT);
                 String unionId = auth.optString("unionId", DEFAULT_UNION_ID);
 
-                Request request = new Request.Builder()
-                        .url(LOGIN_URL)
-                        .header("X-Zop-Name", "tuxi.spm.stock.outbound")
-                        .header("X-Sv-V", "com.zto.ztoFamilyAPPStore_4.51.5")
-                        .header("X-Ca-Version", "1")
-                        .header("x-iam-token", auth.getString("accessToken"))
-                        .header("X-Userid", auth.getString("userId"))
-                        .header("X-Unionid", unionId)
-                        .header("X-Device-Id", DEFAULT_DEVICE_ID)
-                        .header("X-Ys-Dt", ysDt)
-                        .header("X-App-Version", "4.51.5")
-                        .header("User-Agent", "wanjiaExpress/4.51.5 (iPhone; iOS 26.6; Scale/3.00)")
-                        .post(RequestBody.create(postData, MediaType.parse("application/x-www-form-urlencoded")))
-                        .build();
+                Request request = buildZopRequest(LOGIN_URL, "tuxi.spm.stock.outbound", "1", "com.zto.ztoFamilyAPPStore_4.51.5", auth, postData);
 
                 JSONObject body;
                 try (Response resp = client.newCall(request).execute()) {
@@ -1442,5 +1377,10 @@ public class DirectApiClient {
                 mainHandler.post(() -> callback.onError(err));
             }
         });
+    }
+
+    /** token 失效专用异常：由 queryPackages 外层捕获后自动 refresh 并重试一次 */
+    private static class TokenExpiredException extends Exception {
+        TokenExpiredException(String msg) { super(msg); }
     }
 }
