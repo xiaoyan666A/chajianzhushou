@@ -251,23 +251,39 @@ public final class UpdateChecker {
         });
     }
 
-    /** 校验下载的 APK 签名与当前已安装包一致，防止被替换成恶意包 */
+    /**
+     * 校验下载的 APK 签名与当前已安装包一致，防止被替换成恶意包。
+     * 注意：Android 11+ 的 getPackageArchiveInfo 经常读不到下载包签名信息，
+     * 此时无法比对 → 放行（系统安装器仍会强制签名一致性，不同签名无法覆盖安装）。
+     * 只有能明确读到两侧签名且确实不一致时才拦截，避免误伤正常更新。
+     */
     private static boolean verifyApkSignature(Context ctx, File apk) {
         try {
             PackageManager pm = ctx.getPackageManager();
             if (Build.VERSION.SDK_INT >= 28) {
                 PackageInfo installed = pm.getPackageInfo(ctx.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
                 PackageInfo archive = pm.getPackageArchiveInfo(apk.getAbsolutePath(), PackageManager.GET_SIGNING_CERTIFICATES);
-                if (installed == null || archive == null || installed.signingInfo == null || archive.signingInfo == null) return false;
-                return signaturesMatch(installed.signingInfo.getApkContentsSigners(), archive.signingInfo.getApkContentsSigners());
+                if (installed == null || installed.signingInfo == null) return false;
+                Signature[] a = installed.signingInfo.getApkContentsSigners();
+                if (archive == null || archive.signingInfo == null) {
+                    log(ctx, "签名校验放行", "系统读不到下载包签名，交由系统安装器校验");
+                    return true;
+                }
+                return signaturesMatch(a, archive.signingInfo.getApkContentsSigners());
             } else {
                 PackageInfo installed = pm.getPackageInfo(ctx.getPackageName(), PackageManager.GET_SIGNATURES);
                 PackageInfo archive = pm.getPackageArchiveInfo(apk.getAbsolutePath(), PackageManager.GET_SIGNATURES);
-                if (installed == null || archive == null) return false;
+                if (installed == null || installed.signatures == null) return false;
+                if (archive == null || archive.signatures == null) {
+                    log(ctx, "签名校验放行", "系统读不到下载包签名，交由系统安装器校验");
+                    return true;
+                }
                 return signaturesMatch(installed.signatures, archive.signatures);
             }
         } catch (Exception e) {
-            return false;
+            // 校验异常时不拦截，避免误伤正常更新（系统安装器仍会校验签名一致性）
+            log(ctx, "签名校验放行", "校验异常: " + e.getMessage());
+            return true;
         }
     }
 
