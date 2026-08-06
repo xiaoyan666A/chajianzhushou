@@ -26,7 +26,9 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            // 安全加固：R8 代码混淆 + 资源压缩，缩小体积并提高逆向门槛
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }

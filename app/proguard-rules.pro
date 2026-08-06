@@ -1,26 +1,15 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# 应用自身的 Activity / Fragment：系统与 AndroidX 会通过清单/反射恢复实例，不能混淆
+-keep public class com.chajianzhushou.app.*Activity { *; }
+-keep public class com.chajianzhushou.app.*Fragment { *; }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# 自定义 View：XML 布局按类名反射构造，保留全部成员
+-keep class com.chajianzhushou.app.FlowBorderView { *; }
+-keep class com.chajianzhushou.app.DissolveView { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# 保留行号信息，便于以后排查崩溃日志
+-keepattributes SourceFile,LineNumberTable
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renameSourcefileattribute SourceFile
-
-# OkHttp
+# OkHttp / Okio：保留全部类与接口，避免混淆后网络请求异常
 -dontwarn okhttp3.**
 -dontwarn okio.**
 -keep class okhttp3.** { *; }

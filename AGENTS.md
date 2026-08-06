@@ -14,12 +14,23 @@
 - 构建日志写入 `build_apk.log` / `build_err.txt`（已 gitignore）
 
 ## Git 规则
-- 仓库：`C:\AndroidBuild`，分支 master，仅本地管理，未关联远程
+- 仓库：`C:\AndroidBuild`，分支 master；已关联远程 `git@github.com:xiaoyan666A/chajianzhushou.git`（走 SSH 443）
+- 远程同步：`master` 与 `main` 两条分支保持同步（默认分支为 main），推送到 main 会触发 GitHub Actions 自动构建并发布 Release
 - 机器未配置全局 git user.name / user.email，提交时必须用临时参数：
   `git -c user.name="rrzu" -c user.email="rrzu@local" commit -m "中文提交说明"`
 - **禁止自动提交**：除非用户明确要求，否则只改代码不提交；提交前先 `git status` 核对文件
 - 不要 `git add .` 整包提交，只暂存本次改动的文件
 - 已忽略：`build/`、`.gradle/`、`local.properties`、`.idea/`、`*.iml`、`build_apk.log`、`build_err.txt`
+
+## 发版流程（用户约定，必须遵守）
+- **每次任务完成后，主动询问用户"是否需要发版"**；用户明确回复"需要/发版"后，才执行以下发版操作：
+  1. 顺手把 `app/build.gradle` 中 `versionCode` +1、`versionName` 升一档（如 3.39 → 3.40）
+  2. 提交代码（按上面 Git 规则，只暂存本次改动文件）
+  3. 推送到 `master` 与 `main`（`git push origin master` + `git push origin master:main`）
+  4. 等待 GitHub Actions 构建完成，确认 Release 已发布、APK 已上传
+  5. 汇报 Release 版本号与下载地址
+- 若发布说明（Release body）需要强制更新，在其中写入"强制更新"字样（UpdateChecker 会识别）
+- 用户未确认前不得自动发版
 
 ## 主题系统（最重要，勿违反）
 - **深色模式 = `res/values/`、`res/drawable/`（默认资源）；浅色模式 = `res/values-night/`、`res/drawable-night/`**。代码用 `AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_YES/NO)` 强制切到夜间模式以加载白天（浅色）资源，因此浅色 UI 必须放在 `-night` 资源里。

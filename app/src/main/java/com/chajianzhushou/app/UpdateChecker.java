@@ -5,7 +5,10 @@ import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.Toast;
@@ -27,8 +30,10 @@ import okhttp3.Response;
 /**
  * GitHub Releases 检测更新：
  * - 拉取公开仓库 latest release（tag_name / body / APK asset）；
- * - 与本地 versionName 对比，有新版弹更新对话框；
- * - 下载 APK 到缓存目录，FileProvider 拉起系统安装。
+ * - 与本机 versionName 对比，有新版弹更新对话框；
+ * - Release 说明（body）中包含“强制更新”字样时，弹窗不可取消、只能立即更新；
+ * - 下载 APK 支持断点续传（缓存 app-update.apk.part，带 Range 请求，失败后重试不重复下载）；
+ * - 安装前校验下载 APK 签名与本机已安装包一致，防止被替换成恶意包。
  * 发布前把 GITHUB_OWNER / GITHUB_REPO 改成你的仓库。
  */
 public final class UpdateChecker {
@@ -37,11 +42,13 @@ public final class UpdateChecker {
     private static final String GITHUB_OWNER = "xiaoyan666A";
     private static final String GITHUB_REPO = "chajianzhushou";
     private static final String API_URL = "https://api.github.com/repos/%s/%s/releases/latest";
+    // Release 说明中包含该字样时视为强制更新
+    private static final String FORCE_MARK = "强制更新";
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final OkHttpClient HTTP = new OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
             .build();
 
     private UpdateChecker() {}
@@ -102,12 +109,18 @@ public final class UpdateChecker {
 
     private static void showUpdateDialog(final Context ctx, final String version, final String notes, final String apkUrl) {
         try {
-            new AlertDialog.Builder(ctx)
+            boolean force = notes != null && notes.contains(FORCE_MARK);
+            AlertDialog.Builder b = new AlertDialog.Builder(ctx)
                     .setTitle("发现新版本 " + version)
                     .setMessage((notes == null || notes.trim().isEmpty()) ? "是否立即下载更新？" : notes.trim())
-                    .setPositiveButton("立即更新", (d, w) -> downloadAndInstall(ctx, apkUrl))
-                    .setNegativeButton("以后再说", null)
-                    .show();
+                    .setPositiveButton("立即更新", (d, w) -> downloadAndInstall(ctx, apkUrl));
+            if (force) {
+                // 强制更新：不可取消、不提供“以后再说”
+                b.setCancelable(false);
+            } else {
+                b.setNegativeButton("以后再说", null);
+            }
+            b.show();
         } catch (Exception ignore) {}
     }
 
@@ -119,47 +132,127 @@ public final class UpdateChecker {
         pd.setCancelable(false);
         pd.show();
         Threads.io().execute(() -> {
+            File dir = new File(ctx.getCacheDir(), "updates");
+            if (!dir.exists()) dir.mkdirs();
+            File part = new File(dir, "app-update.apk.part");
+            File apk = new File(dir, "app-update.apk");
             try {
-                Request req = new Request.Builder().url(apkUrl).build();
-                Response resp = HTTP.newCall(req).execute();
+                // 断点续传：上次未下完的部分继续，服务器返回 206 则追加写入
+                long done = part.exists() ? part.length() : 0L;
+                Request.Builder rb = new Request.Builder().url(apkUrl);
+                if (done > 0) rb.header("Range", "bytes=" + done + "-");
+                Response resp = HTTP.newCall(rb.build()).execute();
                 if (resp == null || !resp.isSuccessful()) {
-                    MAIN.post(() -> {
-                        try { pd.dismiss(); } catch (Exception ignore) {}
-                        toast(ctx, "下载失败");
-                    });
+                    fail(pd, ctx, "下载失败（网络错误，稍后重试可断点续传）");
                     return;
                 }
-                long total = resp.body() != null ? resp.body().contentLength() : -1;
-                File dir = new File(ctx.getCacheDir(), "updates");
-                if (!dir.exists()) dir.mkdirs();
-                File apk = new File(dir, "app-update.apk");
-                long done = 0;
+                long total;
+                boolean append;
+                if (resp.code() == 206) {
+                    append = true;
+                    total = parseContentRangeTotal(resp.header("Content-Range", ""));
+                    long bodyLen = resp.body() != null ? resp.body().contentLength() : -1;
+                    if (total <= done) total = bodyLen > 0 ? done + bodyLen : -1;
+                } else {
+                    // 服务器不支持断点，从头下载
+                    append = false;
+                    total = resp.body() != null ? resp.body().contentLength() : -1;
+                    if (part.exists()) part.delete();
+                    done = 0;
+                }
+                if (total <= 0) total = -1;
+                long written = done;
                 try (InputStream in = resp.body().byteStream();
-                     FileOutputStream fos = new FileOutputStream(apk)) {
+                     FileOutputStream fos = new FileOutputStream(part, append)) {
                     byte[] buf = new byte[8192];
                     int n;
                     while ((n = in.read(buf)) > 0) {
                         fos.write(buf, 0, n);
-                        done += n;
+                        written += n;
                         if (total > 0) {
-                            final int pct = (int) (done * 100 / total);
+                            final int pct = (int) (written * 100 / total);
+                            if (pct > 100) continue;
                             MAIN.post(() -> {
-                                try { pd.setProgress(pct); } catch (Exception ignore) {}
+                                try {
+                                    pd.setProgress(pct);
+                                    pd.setMessage("已下载 " + pct + "%");
+                                } catch (Exception ignore) {}
                             });
                         }
                     }
                     fos.flush();
+                }
+                // 下载完成：把 .part 改名为正式 APK（rename 失败时兜底复制）
+                if (!part.renameTo(apk)) {
+                    try (java.io.FileInputStream fin = new java.io.FileInputStream(part);
+                         FileOutputStream fout = new FileOutputStream(apk)) {
+                        byte[] b2 = new byte[8192];
+                        int m;
+                        while ((m = fin.read(b2)) > 0) fout.write(b2, 0, m);
+                        fout.flush();
+                    }
+                    part.delete();
+                }
+                // 安装前签名校验：防止下载包被替换
+                if (!verifyApkSignature(ctx, apk)) {
+                    fail(pd, ctx, "更新包签名校验失败，已取消安装");
+                    return;
                 }
                 MAIN.post(() -> {
                     try { pd.dismiss(); } catch (Exception ignore) {}
                     installApk(ctx, apk);
                 });
             } catch (Exception e) {
-                MAIN.post(() -> {
-                    try { pd.dismiss(); } catch (Exception ignore) {}
-                    toast(ctx, "下载失败: " + e.getMessage());
-                });
+                fail(pd, ctx, "下载失败: " + e.getMessage());
             }
+        });
+    }
+
+    /** 校验下载的 APK 签名与当前已安装包一致，防止被替换成恶意包 */
+    private static boolean verifyApkSignature(Context ctx, File apk) {
+        try {
+            PackageManager pm = ctx.getPackageManager();
+            if (Build.VERSION.SDK_INT >= 28) {
+                PackageInfo installed = pm.getPackageInfo(ctx.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
+                PackageInfo archive = pm.getPackageArchiveInfo(apk.getAbsolutePath(), PackageManager.GET_SIGNING_CERTIFICATES);
+                if (installed == null || archive == null || installed.signingInfo == null || archive.signingInfo == null) return false;
+                return signaturesMatch(installed.signingInfo.getApkContentsSigners(), archive.signingInfo.getApkContentsSigners());
+            } else {
+                PackageInfo installed = pm.getPackageInfo(ctx.getPackageName(), PackageManager.GET_SIGNATURES);
+                PackageInfo archive = pm.getPackageArchiveInfo(apk.getAbsolutePath(), PackageManager.GET_SIGNATURES);
+                if (installed == null || archive == null) return false;
+                return signaturesMatch(installed.signatures, archive.signatures);
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean signaturesMatch(Signature[] a, Signature[] b) {
+        if (a == null || b == null || a.length == 0 || b.length == 0 || a.length != b.length) return false;
+        for (int i = 0; i < a.length; i++) {
+            if (a[i] == null || b[i] == null) return false;
+            if (!a[i].toCharsString().equals(b[i].toCharsString())) return false;
+        }
+        return true;
+    }
+
+    /** 从 Content-Range: bytes 0-99/1000 中解析总大小，解析失败返回 -1 */
+    private static long parseContentRangeTotal(String header) {
+        if (header == null) return -1L;
+        int slash = header.lastIndexOf('/');
+        if (slash < 0) return -1L;
+        try {
+            return Long.parseLong(header.substring(slash + 1).trim());
+        } catch (Exception e) {
+            return -1L;
+        }
+    }
+
+    private static void fail(final ProgressDialog pd, final Context ctx, final String msg) {
+        MAIN.post(() -> {
+            try { pd.dismiss(); } catch (Exception ignore) {}
+            toast(ctx, msg);
         });
     }
 
