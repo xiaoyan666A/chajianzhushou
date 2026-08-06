@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 
 import androidx.annotation.NonNull;
@@ -128,6 +130,21 @@ public class MainActivity extends AppCompatActivity {
         }
 
         checkAndRefreshToken();
+        // 检测更新：启动静默检查（24 小时内不重复，有新版才提示）
+        checkAppUpdateSilently();
+    }
+
+    private static final String KEY_LAST_UPDATE_CHECK = "last_update_check_ms";
+
+    private void checkAppUpdateSilently() {
+        try {
+            SharedPreferences prefs = getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+            long last = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0);
+            long now = System.currentTimeMillis();
+            if (now - last < 24L * 3600 * 1000) return;
+            prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, now).apply();
+            new Handler(Looper.getMainLooper()).postDelayed(() -> UpdateChecker.check(this, false), 3000);
+        } catch (Exception ignore) {}
     }
 
     /**

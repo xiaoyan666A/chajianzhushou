@@ -2269,5 +2269,16 @@
             android:paddingTop="@dimen/spacing_sm"
             android:paddingBottom="@dimen/spacing_lg" />
 
+        <Button
+            android:id="@+id/btn_check_update"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/btn_height_sm"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="@dimen/spacing_lg"
+            android:background="@drawable/bg_btn_back"
+            android:textColor="@color/ink2"
+            android:textSize="@dimen/txt_base"
+            android:text="检查更新" />
+
     </LinearLayout>
 </ScrollView>

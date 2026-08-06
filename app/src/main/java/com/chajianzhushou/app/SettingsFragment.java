@@ -271,6 +271,12 @@ public class SettingsFragment extends Fragment {
             }
         } catch (Exception ignore) {}
 
+        // 检测更新（GitHub Releases）
+        View btnCheckUpdate = view.findViewById(R.id.btn_check_update);
+        if (btnCheckUpdate != null) {
+            btnCheckUpdate.setOnClickListener(v -> UpdateChecker.check(requireContext(), true));
+        }
+
         // Voice recognition
         switchAsrEnabled = view.findViewById(R.id.switch_asr_enabled);
         spinnerAutoCloseMinutes = view.findViewById(R.id.spinner_auto_close_minutes);
