@@ -17,9 +17,10 @@ android {
     signingConfigs {
         release {
             storeFile file('release.keystore')
-            storePassword 'Chajian2026!'
-            keyAlias 'chajian'
-            keyPassword 'Chajian2026!'
+            // CI（GitHub Actions）通过 Secrets 注入；本地构建使用默认值
+            storePassword System.getenv('KEYSTORE_PASSWORD') ?: 'Chajian2026!'
+            keyAlias System.getenv('KEY_ALIAS') ?: 'chajian'
+            keyPassword System.getenv('KEY_PASSWORD') ?: 'Chajian2026!'
         }
     }
 
