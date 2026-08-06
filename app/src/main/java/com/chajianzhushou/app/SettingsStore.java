@@ -13,6 +13,7 @@ public class SettingsStore {
 
     public static final String KEY_AUTO_CLOSE_MINUTES = "auto_close_minutes";
     public static final String KEY_AUTO_REFRESH = "auto_refresh_interval";
+    public static final String KEY_AUTO_REFRESH_MAX = "auto_refresh_max_count";
     public static final String KEY_ASR_ENABLED = "asr_enabled";
     public static final String KEY_SERVER_CONNECT = "server_connect_enabled";
     public static final String KEY_SYNC_QUERY = "sync_query_enabled";

@@ -669,16 +669,41 @@ public class DirectApiClient {
         try {
             return doQueryPackages(search, type, pendingOnly);
         } catch (TokenExpiredException tee) {
-            accessToken = null;
-            userId = null;
-            tokenExpiresAt = 0;
-            try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
-            if (tryRefreshToken()) {
-                // refresh 换新成功：自动重试一次，无需用户再次点击
+            // 并发安全：整段重登收进 synchronized 方法，避免多线程同时刷新/登录互相覆盖
+            if (reloginAfterTokenExpired()) {
+                // 换新成功：自动重试一次，无需用户再次点击
                 return doQueryPackages(search, type, pendingOnly);
             }
             throw new Exception("登录已失效，请重新登录");
         }
+    }
+
+    /**
+     * token 失效后的重登（synchronized 防并发）：清旧 token → refreshToken 无感换新 → 失败用保存凭据密码登录。
+     * 成功返回 true；仅当 refresh 与密码登录都失败（或密码为空）才返回 false。
+     */
+    private synchronized boolean reloginAfterTokenExpired() {
+        accessToken = null;
+        userId = null;
+        tokenExpiresAt = 0;
+        try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
+        if (tryRefreshToken()) {
+            return true;
+        }
+        // refreshToken 也失效：用保存的账号密码自动重新登录（密码为空=验证码登录，需手动重登）
+        LoginStore store = new LoginStore(appContext);
+        if (store.hasCredentials() && !store.getPassword().isEmpty()) {
+            try {
+                Log.d(TAG, "refresh 失败，尝试用保存的凭据自动重新登录");
+                try { LogRecorder.info(appContext, "DirectApi", "自动重新登录", "refresh失败，使用保存的账号密码重登"); } catch (Exception ignore) {}
+                loginInternal(store.getUsername(), store.getPassword());
+                return true;
+            } catch (Exception le) {
+                Log.w(TAG, "凭据自动重新登录失败: " + le.getMessage());
+                try { LogRecorder.info(appContext, "DirectApi", "自动重新登录失败", le.getMessage()); } catch (Exception ignore) {}
+            }
+        }
+        return false;
     }
     private JSONObject doQueryPackages(String search, String type, boolean pendingOnly) throws Exception {
         Log.d(TAG, "直接查询包裹: search=" + search + " type=" + type);

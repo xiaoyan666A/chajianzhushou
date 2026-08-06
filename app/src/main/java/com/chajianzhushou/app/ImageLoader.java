@@ -74,7 +74,7 @@ public class ImageLoader {
         }
 
         // 2) 异步下载
-        Threads.io().execute(() -> {
+        Threads.decode().execute(() -> {
             try {
                 Request r = new Request.Builder().url(url).get().build();
                 Response resp = client.newCall(r).execute();
@@ -155,7 +155,7 @@ public class ImageLoader {
             ImageCacheManager.init(null); // 确保缓存目录已创建
             File cacheFile = ImageCacheManager.getCachedFile(billCode, url);
             if (cacheFile != null) {
-                Threads.io().execute(() -> {
+                Threads.decode().execute(() -> {
                     try {
                         byte[] bytes = readAllBytes(new FileInputStream(cacheFile));
                         Bitmap bitmap = decodeSampledBitmap(bytes, 1080, 1080);
@@ -177,7 +177,7 @@ public class ImageLoader {
         }
 
         // 2) 磁盘未命中 → 网络下载 + 写磁盘缓存
-        Threads.io().execute(() -> {
+        Threads.decode().execute(() -> {
             try {
                 Request r = new Request.Builder().url(url).get().build();
                 Response resp = client.newCall(r).execute();
@@ -303,7 +303,7 @@ public class ImageLoader {
             return;
         }
 
-        Threads.io().execute(() -> {
+        Threads.decode().execute(() -> {
             try {
                 Request r = new Request.Builder().url(url).get().build();
                 Response resp = client.newCall(r).execute();

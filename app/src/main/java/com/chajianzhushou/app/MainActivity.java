@@ -225,6 +225,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshTokenSilently() {
+        if (apiService == null) return;
+        // 仅"连接服务器"开启（服务器模式）时才向电脑端刷新 token；
+        // 直连模式下 token 由 DirectApiClient.ensureLogin 自动维护，不依赖电脑端
+        SharedPreferences prefs = getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+        if (!prefs.getBoolean(SettingsStore.KEY_SERVER_CONNECT, false)) return;
         apiService.refreshToken(new ApiService.ApiCallback() {
             @Override
             public void onSuccess(JSONObject response) {

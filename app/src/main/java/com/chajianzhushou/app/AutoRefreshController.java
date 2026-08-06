@@ -33,6 +33,8 @@ public class AutoRefreshController {
     private TextView label;
     private RotateAnimation spinAnim;
     private boolean active = false;
+    /** 用户手动暂停（点击"自动刷新中......"切换）；暂停期间不再调度下一轮 */
+    private boolean paused = false;
 
     public void attach(Context context, Host host, View indicator, TextView label) {
         this.context = context;
@@ -50,6 +52,7 @@ public class AutoRefreshController {
 
     /** 按设置间隔调度一轮自动查询；执行后是否续排由宿主（查询结果）决定 */
     public void startLoop() {
+        if (paused) return; // 用户已暂停：不重新调度，等待手动恢复
         if (host == null) return;
         stop();
         int secs = host.getIntervalSeconds();
@@ -79,10 +82,57 @@ public class AutoRefreshController {
         if (runnable != null) { handler.removeCallbacks(runnable); runnable = null; }
         if (preActivate != null) { handler.removeCallbacks(preActivate); preActivate = null; }
         setActive(false);
+        if (!paused) restoreLabelText();
     }
 
     public boolean isActive() {
         return active;
+    }
+
+    public boolean isPaused() {
+        return paused;
+    }
+
+    /** 点击"自动刷新中......"：暂停 ↔ 恢复；返回切换后的暂停状态 */
+    public boolean togglePause() {
+        if (paused) {
+            resume();
+            return false;
+        } else {
+            pause();
+            return true;
+        }
+    }
+
+    /** 暂停：取消已调度的下一轮刷新，指示器变暗，文字提示已暂停 */
+    public void pause() {
+        if (host == null || host.getIntervalSeconds() <= 0) return;
+        paused = true;
+        if (runnable != null) { handler.removeCallbacks(runnable); runnable = null; }
+        if (preActivate != null) { handler.removeCallbacks(preActivate); preActivate = null; }
+        setActive(false);
+        if (label != null) {
+            try { label.setText("自动刷新已暂停"); } catch (Exception ignore) {}
+        }
+    }
+
+    /** 恢复：还原"自动刷新中"文字并按设置间隔重新调度 */
+    public void resume() {
+        paused = false;
+        restoreLabelText();
+        startLoop();
+    }
+
+    /** 解除暂停（手动查询时调用）：清暂停状态并还原文字，不立即调度（由查询完成后的续排逻辑决定） */
+    public void unpause() {
+        paused = false;
+        restoreLabelText();
+    }
+
+    private void restoreLabelText() {
+        if (label != null) {
+            try { label.setText("自动刷新中......"); } catch (Exception ignore) {}
+        }
     }
 
     /** 指示器视觉切换：active=true 变绿转动，false 变暗静止；间隔关闭时完全隐藏 */

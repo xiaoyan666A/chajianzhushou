@@ -3,6 +3,7 @@
     <!-- 超时设置对话框：定时小时选择 -->
     <string-array name="timeout_hours">
         <item>关闭</item>
+
         <item>00</item>
         <item>01</item>
         <item>02</item>
@@ -99,6 +100,38 @@
         <item>9 秒</item>
         <item>10 秒</item>
         <item>关闭</item>
+    </string-array>
+
+    <!-- 自动刷新次数上限（3-30 次，达到上限后自动暂停刷新） -->
+    <string-array name="auto_refresh_max_options">
+        <item>3 次</item>
+        <item>4 次</item>
+        <item>5 次</item>
+        <item>6 次</item>
+        <item>7 次</item>
+        <item>8 次</item>
+        <item>9 次</item>
+        <item>10 次</item>
+        <item>11 次</item>
+        <item>12 次</item>
+        <item>13 次</item>
+        <item>14 次</item>
+        <item>15 次</item>
+        <item>16 次</item>
+        <item>17 次</item>
+        <item>18 次</item>
+        <item>19 次</item>
+        <item>20 次</item>
+        <item>21 次</item>
+        <item>22 次</item>
+        <item>23 次</item>
+        <item>24 次</item>
+        <item>25 次</item>
+        <item>26 次</item>
+        <item>27 次</item>
+        <item>28 次</item>
+        <item>29 次</item>
+        <item>30 次</item>
     </string-array>
 
     <!-- TTS 播报音色 -->

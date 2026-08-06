@@ -57,6 +57,21 @@ public class TtsHelper {
     // 与 arrays.xml tts_voice_options 顺序一致（0-3）
     private static final String[] MIMO_VOICE_IDS = {"冰糖", "茉莉", "苏打", "白桦"};
 
+    // 与 arrays.xml tts_style_options 顺序一致（0-9）：每个风格对应一段具体稳定的自然语言指令，
+    // 比只传"干练"两个字更能约束语气与清晰度（MiMo 为 LLM 合成，指令越具体语气越稳定）
+    private static final String[] STYLE_PROMPTS = {
+            "",
+            "用温柔、轻柔的语气朗读，语速适中偏慢，语气柔和温暖，吐字清晰",
+            "用活泼、轻快的语气朗读，节奏明快，声音明亮，吐字清晰",
+            "用严肃、端正的语气朗读，语速适中，语气庄重平稳，吐字清晰",
+            "用干练、利落的语气朗读，语速稍快，节奏明快，咬字清晰，语气稳定干脆",
+            "用甜美、明亮的语气朗读，语速适中，声音圆润，吐字清晰",
+            "用慵懒、松弛的语气朗读，语速偏慢，语气舒缓，吐字清晰",
+            "用俏皮、灵动的语气朗读，轻快活泼，吐字清晰",
+            "用低沉、有磁性的语气朗读，语速适中偏慢，沉稳有质感，吐字清晰",
+            "用清亮、通透的语气朗读，声音明亮，吐字清晰"
+    };
+
     private static TtsHelper instance;
 
     // 系统 TTS（回退）
@@ -64,6 +79,8 @@ public class TtsHelper {
     private boolean systemInitialized = false;
     // 当前系统TTS播报的 utteranceId，用于回调令牌校验（旧播报被打断后的完成事件不得触发当前回调）
     private volatile String systemUtteranceId;
+    // 播报代次：每次 speak/stop 递增，MiMo 异步响应回来后先校验，过期响应直接丢弃（防止旧音频打断/覆盖新播报）
+    private volatile int speechGeneration = 0;
 
     // MiMo 播放
     private MediaPlayer currentPlayer;
@@ -97,6 +114,12 @@ public class TtsHelper {
                 if (status == TextToSpeech.SUCCESS) {
                     try {
                         systemTts.setLanguage(Locale.CHINESE);
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            systemTts.setAudioAttributes(new AudioAttributes.Builder()
+                                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                    .build());
+                        }
                         systemInitialized = true;
                     } catch (Throwable ignore) {}
                 }
@@ -137,6 +160,7 @@ public class TtsHelper {
     // ====== 主入口：优先 MiMo HTTP，失败回退系统 TTS ======
     public void speak(Context ctx, String text, TtsCallback callback) {
         stop();
+        final int gen = ++speechGeneration;
         currentCallback = callback;
 
         if (ctx == null || text == null || text.isEmpty()) {
@@ -175,7 +199,7 @@ public class TtsHelper {
             StringBuilder styleInst = new StringBuilder();
             String[] styleNames = ctx.getResources().getStringArray(R.array.tts_style_options);
             if (styleIdx >= 0 && styleIdx < styleNames.length && styleIdx != 0) {
-                styleInst.append("【风格】").append(styleNames[styleIdx]).append("。");
+                styleInst.append(STYLE_PROMPTS[styleIdx]).append("。");
             }
             if (customStyle != null && customStyle.trim().length() > 0) {
                 styleInst.append(customStyle.trim()).append("。");
@@ -186,7 +210,7 @@ public class TtsHelper {
             }
 
             // 如果 styleInst 非空，把内容前置 (style) 标签 或 user message 双保险（双保险都加）
-            String userContent = styleInst.length() > 0 ? styleInst.toString() : "用自然、流畅的中文普通话朗读";
+            String userContent = styleInst.length() > 0 ? styleInst.toString() : "用自然、清晰、平稳的中文普通话朗读，吐字清楚，语速适中，语气稳定一致";
             // assistant 内容：如果有 style 也把 (风格) 前缀加在文本最前面，提升生效概率
             String assistantContent;
             if (styleIdx != 0 || (customStyle != null && customStyle.trim().length() > 0)) {
@@ -222,7 +246,7 @@ public class TtsHelper {
             final String postBody = body.toString();
             Log.d(TAG, "MiMo TTS 请求 voice=" + voice + " text=" + text);
             // 异步请求
-            Threads.io().execute(() -> mimoSpeakAsync(ctx, apiKey, postBody, text));
+            Threads.io().execute(() -> mimoSpeakAsync(ctx, apiKey, postBody, text, gen));
         } catch (Throwable t) {
             Log.w(TAG, "构造MiMo请求失败，回退系统TTS: " + t.getMessage());
             speakWithSystem(ctx, text);
@@ -230,7 +254,7 @@ public class TtsHelper {
     }
 
     // ====== MiMo HTTP 实现 ======
-    private void mimoSpeakAsync(Context ctx, String apiKey, String postBody, String fallbackText) {
+    private void mimoSpeakAsync(Context ctx, String apiKey, String postBody, String fallbackText, int gen) {
         try {
             Request r = new Request.Builder()
                     .url(MIMO_URL)
@@ -242,13 +266,13 @@ public class TtsHelper {
             if (resp == null || !resp.isSuccessful()) {
                 String code = (resp == null ? "null" : String.valueOf(resp.code()));
                 Log.w(TAG, "MiMo TTS HTTP错误 code=" + code);
-                mainHandler.post(() -> speakWithSystem(ctx, fallbackText));
+            mainHandler.post(() -> { if (gen != speechGeneration) return; speakWithSystem(ctx, fallbackText); });
                 return;
             }
             ResponseBody rb = resp.body();
             if (rb == null) {
                 Log.w(TAG, "MiMo TTS 空响应体");
-                mainHandler.post(() -> speakWithSystem(ctx, fallbackText));
+                mainHandler.post(() -> { if (gen != speechGeneration) return; speakWithSystem(ctx, fallbackText); });
                 return;
             }
             String json = rb.string();
@@ -262,7 +286,7 @@ public class TtsHelper {
                 // 错误信息
                 String errMsg = j.optString("message", "未知错误");
                 Log.w(TAG, "MiMo TTS 无音频: " + errMsg);
-                mainHandler.post(() -> speakWithSystem(ctx, fallbackText));
+                mainHandler.post(() -> { if (gen != speechGeneration) return; speakWithSystem(ctx, fallbackText); });
                 return;
             }
             byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
@@ -278,10 +302,10 @@ public class TtsHelper {
             Log.d(TAG, "MiMo TTS 收到音频 bytes=" + bytes.length + " file=" + out.getName());
 
             // 主线程播放
-            mainHandler.post(() -> playWav(out));
+            mainHandler.post(() -> { if (gen != speechGeneration) return; playWav(out); });
         } catch (Throwable t) {
             Log.w(TAG, "MiMo TTS异常: " + t.getMessage());
-            mainHandler.post(() -> speakWithSystem(ctx, fallbackText));
+                mainHandler.post(() -> { if (gen != speechGeneration) return; speakWithSystem(ctx, fallbackText); });
         }
     }
 
@@ -292,7 +316,7 @@ public class TtsHelper {
             currentPlayer = mp;
             mp.setAudioAttributes(new AudioAttributes.Builder()
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .build());
             mp.setDataSource(wav.getAbsolutePath());
             mp.setOnCompletionListener(player -> {
@@ -305,8 +329,12 @@ public class TtsHelper {
                 notifyError("播放错误");
                 return true;
             });
+            mp.setOnPreparedListener(mp2 -> {
+                if (currentPlayer == mp2) {
+                    try { mp2.start(); } catch (Throwable ignore) {}
+                }
+            });
             mp.prepareAsync();
-            mp.setOnPreparedListener(MediaPlayer::start);
         } catch (IOException e) {
             Log.w(TAG, "playWav 失败: " + e.getMessage());
             releasePlayer();
@@ -343,11 +371,11 @@ public class TtsHelper {
             systemUtteranceId = uid;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 android.os.Bundle params = new android.os.Bundle();
-                params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 0.9f);
+                params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
                 systemTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, uid);
             } else {
                 Bundle params = new Bundle();
-                params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 0.9f);
+                params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
                 systemTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, uid);
             }
         } catch (Throwable t) {
@@ -368,6 +396,7 @@ public class TtsHelper {
     }
 
     public void stop() {
+        speechGeneration++;
         stopPlayer();
         try {
             if (systemTts != null) systemTts.stop();

@@ -22,6 +22,7 @@ import okhttp3.Response;
 public class SyncClient {
     private static final String TAG = "SyncClient";
     private static final int RECONNECT_DELAY_MS = 5000;
+    private static final int MAX_RECONNECT_DELAY_MS = 60000;
 
     public interface SyncCallback {
         void onQueryInputReceived(String value);
@@ -83,6 +84,8 @@ public class SyncClient {
     }
 
     private void sseLoop(final int gen) {
+        // 重连退避：5s 起步，失败翻倍，封顶 60s，成功连接后重置（避免电脑端离线时疯狂重连刷日志/耗电）
+        long retryDelayMs = RECONNECT_DELAY_MS;
         while (shouldRun && gen == generation) {
             Response response = null;
             InputStream in = null;
@@ -105,10 +108,12 @@ public class SyncClient {
                         if (ctx != null) LogRecorder.warn(ctx, "Sync", "SSE响应失败", response == null ? "null" : ("HTTP " + response.code()));
                     } catch (Exception ignore) {}
                     if (callback != null) mainHandler.post(() -> callback.onDisconnected());
-                    safeSleep(RECONNECT_DELAY_MS);
+                    safeSleep(retryDelayMs);
+                    retryDelayMs = Math.min(retryDelayMs * 2, MAX_RECONNECT_DELAY_MS);
                     continue;
                 }
                 if (callback != null) mainHandler.post(() -> callback.onConnected());
+                retryDelayMs = RECONNECT_DELAY_MS;
                 in = response.body().byteStream();
                 reader = new BufferedReader(new InputStreamReader(in, "UTF-8"));
                 String line;
@@ -132,7 +137,7 @@ public class SyncClient {
                 Log.w(TAG, "SSE error: " + e.getMessage());
                 try {
                     Context ctx = apiService.getContext();
-                    if (ctx != null) LogRecorder.error(ctx, "Sync", "SSE错误", e.getMessage());
+                    if (ctx != null) LogRecorder.warn(ctx, "Sync", "SSE错误", e.getMessage());
                 } catch (Exception ignore) {}
                 if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
             } finally {
@@ -144,7 +149,8 @@ public class SyncClient {
             // 若期间已 disconnect/重连，旧线程不再补发 onDisconnected 也不再重连
             if (gen != generation) return;
             if (callback != null) mainHandler.post(() -> callback.onDisconnected());
-            safeSleep(RECONNECT_DELAY_MS);
+                    safeSleep(retryDelayMs);
+                    retryDelayMs = Math.min(retryDelayMs * 2, MAX_RECONNECT_DELAY_MS);
         }
     }
 

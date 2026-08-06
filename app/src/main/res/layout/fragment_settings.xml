@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!-- 设置界面 —— 严格对齐电脑端 #settings-page
      顺序：顶部栏 → 账号信息 → 系统信息 → 语音识别配置 → TTS配置 → 日志输出 → 服务器连接 → 登录按钮 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
@@ -1468,42 +1468,59 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingVertical="@dimen/card_margin_bottom">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textColor="@color/ink2"
-                    android:textSize="@dimen/txt_base"
-                    android:textStyle="bold"
-                    android:text="自动关闭时间"
-                    android:layout_marginBottom="2dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textColor="@color/muted"
-                    android:textSize="@dimen/txt_sm"
-                    android:text="识别完成后自动关闭听写"
-                    android:layout_marginBottom="@dimen/spacing_md" />
-
-                <Spinner
-                    android:id="@+id/spinner_auto_close_minutes"
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="@dimen/input_height_lg"
-                    android:background="@drawable/bg_input"
-                    android:paddingHorizontal="@dimen/spacing_lg" />
-            </LinearLayout>
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingVertical="@dimen/card_margin_bottom">
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/divider_height"
-                android:background="@color/hair"
-                android:layout_marginVertical="@dimen/spacing_xs" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink2"
+                        android:textSize="@dimen/txt_base"
+                        android:textStyle="bold"
+                        android:text="自动关闭时间"
+                        android:layout_marginBottom="2dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/muted"
+                        android:textSize="@dimen/txt_sm"
+                        android:text="识别完成后自动关闭听写"
+                        android:layout_marginBottom="@dimen/spacing_md" />
+
+                    <Spinner
+                        android:id="@+id/spinner_auto_close_minutes"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/input_height_lg"
+                        android:background="@drawable/bg_input"
+                        android:paddingHorizontal="@dimen/spacing_lg" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ===== 自动刷新卡片 ===== -->
+        <LinearLayout
+            android:id="@+id/card_auto_refresh"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="自动刷新"
+                android:layout_marginBottom="@dimen/spacing_xl" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -1534,15 +1551,55 @@
                     android:layout_height="@dimen/input_height_lg"
                     android:background="@drawable/bg_input"
                     android:paddingHorizontal="@dimen/spacing_lg" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ink2"
+                    android:textSize="@dimen/txt_base"
+                    android:textStyle="bold"
+                    android:text="自动刷新次数上限"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="2dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/muted"
+                    android:textSize="@dimen/txt_sm"
+                    android:text="达到上限后自动暂停刷新，点击查件页“自动刷新中”可恢复"
+                    android:layout_marginBottom="@dimen/spacing_md" />
+
+                <Spinner
+                    android:id="@+id/spinner_auto_refresh_max"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/input_height_lg"
+                    android:background="@drawable/bg_input"
+                    android:paddingHorizontal="@dimen/spacing_lg" />
             </LinearLayout>
+        </LinearLayout>
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/divider_height"
-                android:background="@color/hair"
-                android:layout_marginVertical="@dimen/spacing_xs" />
+        <!-- ===== Mimo API Key 卡片 ===== -->
+        <LinearLayout
+            android:id="@+id/card_mimo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_settings_card"
+            android:padding="@dimen/spacing_3xl"
+            android:layout_marginBottom="@dimen/spacing_2xl">
 
-            <!-- Mimo API Key 配置 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/muted"
+                android:textSize="@dimen/txt_sm"
+                android:textStyle="bold"
+                android:textAllCaps="true"
+                android:letterSpacing="0.06"
+                android:text="Mimo API Key"
+                android:layout_marginBottom="@dimen/spacing_xl" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -1552,18 +1609,9 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="@color/ink2"
-                    android:textSize="@dimen/txt_base"
-                    android:textStyle="bold"
-                    android:text="Mimo API Key"
-                    android:layout_marginBottom="2dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
                     android:textColor="@color/muted"
                     android:textSize="@dimen/txt_sm"
-                    android:text="语音识别接口密钥"
+                    android:text="TTS 语音合成接口密钥，留空则使用系统 TTS"
                     android:layout_marginBottom="@dimen/spacing_md" />
 
                 <LinearLayout
@@ -1598,9 +1646,7 @@
                         android:layout_marginStart="@dimen/spacing_md" />
                 </LinearLayout>
             </LinearLayout>
-            </LinearLayout>
         </LinearLayout>
-
         <!-- ===== TTS 语音播报配置卡片 ===== -->
         <LinearLayout
             android:id="@+id/card_tts"

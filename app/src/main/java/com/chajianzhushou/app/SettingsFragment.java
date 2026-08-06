@@ -63,6 +63,9 @@ public class SettingsFragment extends Fragment {
     // auto_refresh: positions 0-10 → values in seconds (1,2,3,4,5,6,7,8,9,10,0关闭)
     private static final int[] AUTO_REFRESH_VALUES = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0};
 
+    // auto_refresh_max: 自动刷新次数上限（3-30 次）
+    private static final int[] AUTO_REFRESH_MAX_VALUES = {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30};
+
     // TTS voice values
     private static final String[] TTS_VOICE_VALUES = {"冰糖", "茉莉", "苏打", "白桦"};
 
@@ -92,6 +95,7 @@ public class SettingsFragment extends Fragment {
     private SwitchCompat switchAsrEnabled;
     private Spinner spinnerAutoCloseMinutes;
     private Spinner spinnerAutoRefresh;
+    private Spinner spinnerAutoRefreshMax;
     private EditText etMimoApiKey;
     private Button btnLockMimoKey;
     private boolean mimoKeyLocked = false;
@@ -141,6 +145,8 @@ public class SettingsFragment extends Fragment {
     // Views - 进阶功能（输入解锁码 admin 后显示高级配置卡片）
     private SwitchCompat switchAdvancedFeatures;
     private View cardAsr;
+    private View cardAutoRefresh;
+    private View cardMimo;
     private View cardTts;
     private View cardLogs;
     private View cardServerConnect;
@@ -269,6 +275,7 @@ public class SettingsFragment extends Fragment {
         switchAsrEnabled = view.findViewById(R.id.switch_asr_enabled);
         spinnerAutoCloseMinutes = view.findViewById(R.id.spinner_auto_close_minutes);
         spinnerAutoRefresh = view.findViewById(R.id.spinner_auto_refresh);
+        spinnerAutoRefreshMax = view.findViewById(R.id.spinner_auto_refresh_max);
         etMimoApiKey = view.findViewById(R.id.et_mimo_api_key);
         btnLockMimoKey = view.findViewById(R.id.btn_lock_mimo_key);
 
@@ -545,6 +552,8 @@ public class SettingsFragment extends Fragment {
         // ===== 进阶功能：输入解锁码 admin 后显示高级配置卡片 =====
         switchAdvancedFeatures = view.findViewById(R.id.switch_advanced_features);
         cardAsr = view.findViewById(R.id.card_asr);
+        cardAutoRefresh = view.findViewById(R.id.card_auto_refresh);
+        cardMimo = view.findViewById(R.id.card_mimo);
         cardTts = view.findViewById(R.id.card_tts);
         cardLogs = view.findViewById(R.id.card_logs);
         cardServerConnect = view.findViewById(R.id.card_server_connect);
@@ -764,6 +773,38 @@ public class SettingsFragment extends Fragment {
         }
 
         // ---- Mimo API Key ---- //
+
+        // ---- Auto-refresh 次数上限 spinner ---- //
+        if (spinnerAutoRefreshMax != null) {
+            ArrayAdapter<CharSequence> maxAdapter = ArrayAdapter.createFromResource(
+                    requireContext(), R.array.auto_refresh_max_options, R.layout.spinner_item);
+            maxAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
+            spinnerAutoRefreshMax.setAdapter(maxAdapter);
+            // 恢复保存的上限值
+            int savedMax = 0;
+            try {
+                SharedPreferences prefs = settingsStore.prefs();
+                savedMax = prefs.getInt(SettingsStore.KEY_AUTO_REFRESH_MAX, 10);
+            } catch (Exception ignore) {}
+            int restoreMaxPos = AUTO_REFRESH_MAX_VALUES.length - 1; // 默认 30
+            for (int i = 0; i < AUTO_REFRESH_MAX_VALUES.length; i++) {
+                if (AUTO_REFRESH_MAX_VALUES[i] == savedMax) { restoreMaxPos = i; break; }
+            }
+            if (savedMax < AUTO_REFRESH_MAX_VALUES[0] || savedMax > AUTO_REFRESH_MAX_VALUES[AUTO_REFRESH_MAX_VALUES.length - 1]) {
+                restoreMaxPos = AUTO_REFRESH_MAX_VALUES.length - 1;
+            }
+            spinnerAutoRefreshMax.setSelection(restoreMaxPos);
+
+            spinnerAutoRefreshMax.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+                    if (isLoadingSettings) return;
+                    int max = (pos >= 0 && pos < AUTO_REFRESH_MAX_VALUES.length) ? AUTO_REFRESH_MAX_VALUES[pos] : 10;
+                    settingsStore.set(SettingsStore.KEY_AUTO_REFRESH_MAX, max);
+                    postSettings("autoRefreshMaxCount", max);
+                }
+                @Override public void onNothingSelected(AdapterView<?> parent) {}
+            });
+        }
         String savedKey = "";
         try {
             SharedPreferences prefs = settingsStore.prefs();
@@ -1378,6 +1419,8 @@ public class SettingsFragment extends Fragment {
     /** 根据进阶功能开关状态显示/隐藏高级配置卡片 */
     private void applyAdvancedFeatures(boolean on) {
         setContentVisible(cardAsr, on);
+        setContentVisible(cardAutoRefresh, on);
+        setContentVisible(cardMimo, on);
         setContentVisible(cardTts, on);
         setContentVisible(cardLogs, on);
         setContentVisible(cardServerConnect, on);
@@ -1459,12 +1502,15 @@ public class SettingsFragment extends Fragment {
 
     private void postSettingsObj(String key, Object value) {
         if (!isViewReady || apiService == null) return;
+        // 服务器连接关闭：设置变更不推送到服务器（直连模式完全独立）
+        if (!serverConnectEnabled) return;
+        if (!isViewReady || apiService == null) return;
         try {
             JSONObject body = new JSONObject();
             body.put(key, value);
             doPost("/api/settings", body);
         } catch (Exception e) {
-            // ignore silently
+            try { LogRecorder.warn(requireContext(), "Settings", "设置同步失败", key + " " + (e == null ? "" : e.getMessage())); } catch (Exception ignore) {}
         }
     }
 
@@ -1482,7 +1528,9 @@ public class SettingsFragment extends Fragment {
                     if (response.body() != null) response.body().close();
                 }
             });
-        } catch (Exception ignore) {}
+        } catch (Exception e) {
+            try { LogRecorder.warn(requireContext(), "Settings", "设置同步失败", path + " " + (e == null ? "" : e.getMessage())); } catch (Exception ignore) {}
+        }
     }
 
     // ===== TTS Save & Test =====

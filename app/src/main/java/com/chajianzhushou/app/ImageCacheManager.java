@@ -73,7 +73,8 @@ public class ImageCacheManager {
     }
 
     /** 根据 billCode 获取缓存文件 */
-    public static File getCachedFile(String billCode) {
+    /** 无 URL 校验的缓存读取（仅内部兜底：无 URL 可比对时按单号读缓存）；外部请使用带 URL 的版本 */
+    private static File getCachedFile(String billCode) {
         if (billCode == null || billCode.isEmpty()) return null;
         File dir = ensureDir();
         if (dir == null) return null;

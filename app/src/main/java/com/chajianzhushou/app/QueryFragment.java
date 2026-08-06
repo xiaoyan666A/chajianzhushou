@@ -55,6 +55,7 @@ public class QueryFragment extends Fragment {
     private static final String TAG = "QueryFragment";
     private static final String PREFS_GRID = "query_grid_view";
     private static final String KEY_AUTO_REFRESH = "auto_refresh_interval";
+    private static final String KEY_AUTO_REFRESH_MAX = "auto_refresh_max_count";
     private static final String KEY_GRID_MANUAL_ENABLED = "grid_manual_columns_enabled";
     private static final String KEY_GRID_MANUAL_COLUMNS_PORTRAIT = "grid_manual_columns_portrait";
     private static final String KEY_GRID_MANUAL_COLUMNS_LANDSCAPE = "grid_manual_columns_landscape";
@@ -104,6 +105,8 @@ public class QueryFragment extends Fragment {
     private boolean showDelivered = true;
     private boolean isAutoRefresh = false;
     private int lastPendingCount = -1;
+    // 自动刷新已执行轮次：手动查询重置，达到设置上限后自动暂停
+    private int autoRefreshTickCount = 0;
     // 用户最近一次操作列表（按下/松手）的时间：用于避免快速滑动时底部加载/滚动恢复干扰
     private long lastUserScrollAt = 0;
     private volatile boolean isViewReady = false;
@@ -270,6 +273,8 @@ public class QueryFragment extends Fragment {
         // 自动刷新指示器初始状态：暗色静止（圆环样式，空闲为静态暗环）
         // 自动刷新控制器：调度 + 指示器（空闲暗色静止，执行时变绿转动）
         autoRefreshController = new AutoRefreshController();
+        final TextView autoRefreshLabel = view.findViewById(R.id.auto_refresh_label);
+        final View autoRefreshIndicator = view.findViewById(R.id.auto_refresh_indicator);
         autoRefreshController.attach(requireContext(), new AutoRefreshController.Host() {
             @Override public boolean isViewReady() { return QueryFragment.this.isViewReady; }
             @Override public boolean isUserTouching() { return QueryFragment.this.isUserTouching; }
@@ -278,7 +283,18 @@ public class QueryFragment extends Fragment {
             @Override public void onActiveChanged(boolean active) {
                 if (switchGridView != null) switchGridView.setEnabled(!active);
             }
-        }, view.findViewById(R.id.auto_refresh_indicator), view.findViewById(R.id.auto_refresh_label));
+        }, autoRefreshIndicator, autoRefreshLabel);
+        // 点击"自动刷新中......"：暂停自动刷新，再次点击恢复
+        View.OnClickListener autoRefreshToggle = v -> {
+            if (autoRefreshController == null) return;
+            boolean nowPaused = autoRefreshController.togglePause();
+            try {
+                LogRecorder.info(requireContext(), "AutoRefresh", nowPaused ? "暂停自动刷新" : "恢复自动刷新", "点击顶部指示器切换");
+            } catch (Exception ignore) {}
+            Toast.makeText(requireContext(), nowPaused ? "自动刷新已暂停" : "已恢复自动刷新", Toast.LENGTH_SHORT).show();
+        };
+        autoRefreshLabel.setOnClickListener(autoRefreshToggle);
+        autoRefreshIndicator.setOnClickListener(autoRefreshToggle);
 
         apiService = new ApiService(requireContext());
         syncClient = new SyncClient(apiService);
@@ -940,7 +956,6 @@ public class QueryFragment extends Fragment {
     private void onPicOutboundClick(String billCode, JSONObject item) {
         if (billCode == null || billCode.length() == 0) {
             safeToast("缺少单号");
-            return;
         }
         try {
             java.io.File dir = new java.io.File(requireContext().getCacheDir(), "photos");
@@ -1164,7 +1179,33 @@ public class QueryFragment extends Fragment {
         }
     }
 
+    /** 读取设置"自动刷新次数上限"（3-30，默认10）；间隔关闭或未配置时不受限 */
+    private int getAutoRefreshMaxCount() {
+        try {
+            SharedPreferences prefs = requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+            int max = prefs.getInt(KEY_AUTO_REFRESH_MAX, 10);
+            if (max < 3) max = 10;
+            if (max > 30) max = 30;
+            return max;
+        } catch (Exception e) {
+            return 10;
+        }
+    }
     private void startAutoRefreshLoop() {
+        if (autoRefreshController == null) return;
+        int maxCount = getAutoRefreshMaxCount();
+        if (autoRefreshTickCount >= maxCount) {
+            // 达到刷新上限：自动暂停，不再续排；再次点击指示器可恢复
+            if (!autoRefreshController.isPaused()) {
+                autoRefreshController.pause();
+                try {
+                    Toast.makeText(requireContext(), "已达自动刷新上限（" + maxCount + "次），已暂停", Toast.LENGTH_SHORT).show();
+                } catch (Exception ignore) {}
+                try {
+                    LogRecorder.info(requireContext(), "AutoRefresh", "达到刷新上限", "已自动暂停 count=" + autoRefreshTickCount + " max=" + maxCount);
+                } catch (Exception ignore) {}
+            }
+        }
         if (autoRefreshController != null) autoRefreshController.startLoop();
     }
 
@@ -1181,7 +1222,10 @@ public class QueryFragment extends Fragment {
                 q = lastQueriedBillCode;
             }
             if (q.length() > 0) {
-                performQuery(false, true, q);
+                if (performQuery(false, true, q)) {
+                    // 仅真正发起查询才计入自动刷新轮次（被并发/节流拒绝的 tick 不计数）
+                    autoRefreshTickCount++;
+                }
                 return;
             }
         }
@@ -1190,16 +1234,16 @@ public class QueryFragment extends Fragment {
 
     // ===== Query =====
 
-    private void performQuery(boolean syncToPc) {
-        performQuery(syncToPc, false, null, true);
+    private boolean performQuery(boolean syncToPc) {
+        return performQuery(syncToPc, false, null, true);
     }
 
-    private void performQuery(boolean syncToPc, boolean isAuto) {
-        performQuery(syncToPc, isAuto, null, true);
+    private boolean performQuery(boolean syncToPc, boolean isAuto) {
+        return performQuery(syncToPc, isAuto, null, true);
     }
 
-    private void performQuery(boolean syncToPc, boolean isAuto, String explicitValue) {
-        performQuery(syncToPc, isAuto, explicitValue, true);
+    private boolean performQuery(boolean syncToPc, boolean isAuto, String explicitValue) {
+        return performQuery(syncToPc, isAuto, explicitValue, true);
     }
 
     /**
@@ -1207,11 +1251,11 @@ public class QueryFragment extends Fragment {
      *                     输入框清空后自动刷新会传入最后一次查询值，保证列表不消失、刷新继续。
      * @param recordHistory 是否计入"最近查询"历史（语音识别、自动刷新不计入）
      */
-    private void performQuery(boolean syncToPc, boolean isAuto, String explicitValue, boolean recordHistory) {
-        if (!isViewReady || etBillCode == null) return;
+    private boolean performQuery(boolean syncToPc, boolean isAuto, String explicitValue, boolean recordHistory) {
+        if (!isViewReady || etBillCode == null) return false;
         long now = System.currentTimeMillis();
-        if (isQuerying) return;
-        if (now - lastQueryAt < 400) return;
+        if (isQuerying) return false;
+        if (now - lastQueryAt < 400) return false;
         lastQueryAt = now;
         isQuerying = true;
         __tReqStart = now;
@@ -1229,7 +1273,7 @@ public class QueryFragment extends Fragment {
         if (billCode.isEmpty()) {
             isQuerying = false;
             if (!isAuto) safeToast("请输入查询内容");
-            return;
+            return false;
         }
         // 记住本次实际查询条件：清空输入后自动刷新仍按此继续
         lastQueriedBillCode = billCode;
@@ -1239,6 +1283,10 @@ public class QueryFragment extends Fragment {
             lastQueriedType = effectiveType;
             // 手动查询：清空"刚刚出库"标记，重新按服务器返回构建分块列表
             justOutboundBillCodes.clear();
+            // 手动查询：重置自动刷新轮次计数
+            autoRefreshTickCount = 0;
+            // 手动查询：解除自动刷新暂停（上限暂停后，再次查询应恢复自动刷新能力）
+            if (autoRefreshController != null) autoRefreshController.unpause();
             // 手动查询：清空图片 URL 解析缓存，重新解析签名 URL
             // （否则"一键清理缓存"后仍会复用内存里已过期的 URL，图片显示过期）
             if (imageUrlResolver != null) imageUrlResolver.clearCache();
@@ -1319,6 +1367,7 @@ public class QueryFragment extends Fragment {
                     }
                 });
             }
+            return true; // 已成功发起查询（异步结果由回调处理）
         } catch (Exception e) {
             isQuerying = false;
             showLoading(false);
@@ -1327,6 +1376,7 @@ public class QueryFragment extends Fragment {
             if (!isAuto) safeToast("查询失败: " + e.getMessage());
             // 查询失败时如果设置了自动刷新间隔且有输入，保持循环继续尝试
             rescheduleAutoRefreshOnErrorOrEmpty();
+            return false;
         }
     }
 
@@ -1481,7 +1531,9 @@ public class QueryFragment extends Fragment {
 
         if (pendingCount != lastPendingCount || !isAutoRefresh) {
             if (pendingCount > 0) {
-                String ttsText = "共" + pendingCount + "个待取包裹";
+                String ttsText = isAutoRefresh
+                        ? "剩余" + pendingCount + "个待取包裹"
+                        : "共" + pendingCount + "个待取包裹";
                 try {
                     ttsHelper.speak(requireContext(), ttsText, new TtsHelper.TtsCallback() {
                         @Override
@@ -1490,6 +1542,21 @@ public class QueryFragment extends Fragment {
                         @Override
                         public void onError(String error) {}
                     });
+                } catch (Exception ignore) {}
+            } else {
+                // 无待取包裹：按是否存在"标注的超时件"播报不同内置提示音
+                // 先作废上一轮 TTS 的迟到响应（否则 MiMo 音频晚到会与内置提示音叠加/串台）
+                try { if (ttsHelper != null) ttsHelper.stop(); } catch (Exception ignore) {}
+                int timeoutMarkedCount = 0;
+                for (JSONObject pkg : currentPackages) {
+                    if (isTimeoutPackage(pkg)) timeoutMarkedCount++;
+                }
+                try {
+                    if (timeoutMarkedCount > 0) {
+                        AudioPlayerHelper.play(requireContext(), R.raw.no_pending_with_timeout);
+                    } else {
+                        AudioPlayerHelper.play(requireContext(), R.raw.no_pending);
+                    }
                 } catch (Exception ignore) {}
             }
             lastPendingCount = pendingCount;
@@ -1890,7 +1957,7 @@ public class QueryFragment extends Fragment {
                 }
                 // 主线程截位图（视图只能主线程绘制），后台线程生成帧序列
                 final android.graphics.Bitmap bmp = captureCardBitmap(card);
-                Threads.io().execute(() -> {
+                Threads.decode().execute(() -> {
                     try {
                         final List<android.graphics.Bitmap> frames =
                                 (bmp != null) ? DissolveView.buildFrames(bmp) : null;
@@ -2406,7 +2473,9 @@ public class QueryFragment extends Fragment {
                     refreshCardImage(child, itemMap);
                 }
             }
-        } catch (Throwable ignore) {}
+        } catch (Throwable e) {
+            try { LogRecorder.warn(requireContext(), "IMAGE", "刷新列表图片失败", e == null ? "" : String.valueOf(e.getMessage())); } catch (Exception ignore) {}
+        }
     }
 
     /** 单张卡片：新数据的图片 URL 与当前展示 URL 不一致时重新加载，并同步刷新正在预览该单号的预览大图。 */
@@ -2458,7 +2527,9 @@ public class QueryFragment extends Fragment {
             try {
                 ImagePreviewDialog dlg = ImagePreviewDialog.getActiveDialog();
                 if (dlg != null) dlg.refreshImage(newUrl, tno);
-            } catch (Throwable ignore) {}
+        } catch (Throwable e) {
+            try { LogRecorder.warn(requireContext(), "IMAGE", "刷新卡片图片失败", e == null ? "" : String.valueOf(e.getMessage())); } catch (Exception ignore) {}
+        }
         } catch (Throwable ignore) {}
     }
 
