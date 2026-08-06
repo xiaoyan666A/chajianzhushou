@@ -1,5 +1,6 @@
 package com.chajianzhushou.app;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.Context;
@@ -73,6 +74,8 @@ public final class UpdateChecker {
      */
     public static void check(final Context ctx, final boolean manual, final CheckCallback cb) {
         final Context app = ctx.getApplicationContext();
+        // 弹窗必须用 Activity 上下文（Application 上下文没有窗口令牌，show() 会抛 BadTokenException 被静默吞掉）
+        final Context uiCtx = ctx;
         if (manual) toast(app, "正在检查更新...");
         Threads.io().execute(() -> {
             try {
@@ -125,7 +128,7 @@ public final class UpdateChecker {
                 log(app, "发现新版本", "当前=" + current + " 最新=" + tag);
                 final String fApkUrl = apkUrl;
                 final String fTag = tag;
-                MAIN.post(() -> showUpdateDialog(app, fTag, notes, fApkUrl));
+                MAIN.post(() -> showUpdateDialog(uiCtx, fTag, notes, fApkUrl));
                 if (cb != null) cb.onDone(true);
             } catch (Exception e) {
                 if (manual) toast(app, "检查更新失败: " + e.getMessage());
@@ -142,6 +145,11 @@ public final class UpdateChecker {
 
     private static void showUpdateDialog(final Context ctx, final String version, final String notes, final String apkUrl) {
         try {
+            // Activity 已销毁/正在结束时不弹窗，避免 BadTokenException
+            if (ctx instanceof Activity) {
+                Activity a = (Activity) ctx;
+                if (a.isFinishing() || a.isDestroyed()) return;
+            }
             boolean force = notes != null && notes.contains(FORCE_MARK);
             AlertDialog.Builder b = new AlertDialog.Builder(ctx)
                     .setTitle("发现新版本 " + version)
@@ -154,7 +162,9 @@ public final class UpdateChecker {
                 b.setNegativeButton("以后再说", null);
             }
             b.show();
-        } catch (Exception ignore) {}
+        } catch (Exception e) {
+            log(ctx, "更新弹窗失败", e == null ? "null" : String.valueOf(e.getMessage()));
+        }
     }
 
     private static void downloadAndInstall(final Context ctx, final String apkUrl) {
