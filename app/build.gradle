@@ -10,14 +10,24 @@ android {
         applicationId "com.chajianzhushou.app"
         minSdk 24
         targetSdk 34
-        versionCode 59
-        versionName "3.38"
+        versionCode 60
+        versionName "3.39"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('release.keystore')
+            storePassword 'Chajian2026!'
+            keyAlias 'chajian'
+            keyPassword 'Chajian2026!'
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
         debug {
             minifyEnabled false

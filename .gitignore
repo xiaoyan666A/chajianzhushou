@@ -12,3 +12,5 @@ local.properties
 # Build logs
 build_apk.log
 build_err.txt
+# 签名密钥库（不提交，丢失后无法更新已发布版本）
+release.keystore
