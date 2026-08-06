@@ -21,9 +21,6 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
@@ -31,9 +28,8 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 /**
- * 更新检测（双源并行，取较新版本）：
- * - GitHub Releases（主源）与 Gitee Releases（国内镜像源，国内可直接访问）并行查询；
- * - 解析 latest release（tag_name / body / APK asset），取两个源中较新的版本；
+ * GitHub Releases 检测更新：
+ * - 拉取公开仓库 latest release（tag_name / body / APK asset）；
  * - 与本机 versionName 对比，有新版弹更新对话框；
  * - Release 说明（body）中包含“强制更新”字样时，弹窗不可取消、只能立即更新；
  * - 下载 APK 支持断点续传（缓存 app-update.apk.part，带 Range 请求，失败后重试不重复下载）；
@@ -42,14 +38,10 @@ import okhttp3.Response;
  */
 public final class UpdateChecker {
 
-    // 发布仓库：GitHub Releases（主源）
+    // 发布仓库（GitHub Releases 用于检测更新与 APK 分发）
     private static final String GITHUB_OWNER = "xiaoyan666A";
     private static final String GITHUB_REPO = "chajianzhushou";
     private static final String GITHUB_API = "https://api.github.com/repos/%s/%s/releases/latest";
-    // 国内镜像源：Gitee Releases（创建 Gitee 仓库后填入用户名/仓库名即生效）
-    private static final String GITEE_OWNER = "";
-    private static final String GITEE_REPO = "";
-    private static final String GITEE_API = "https://gitee.com/api/v5/repos/%s/%s/releases/latest";
     // Release 说明中包含该字样时视为强制更新
     private static final String FORCE_MARK = "强制更新";
 
@@ -84,77 +76,23 @@ public final class UpdateChecker {
         if (manual) toast(app, "正在检查更新...");
         Threads.io().execute(() -> {
             try {
-                // 并行查询 GitHub 与 Gitee，取较新版本（Gitee 未配置时跳过）
-                List<ReleaseInfo> results = new ArrayList<>();
-                CountDownLatch latch = new CountDownLatch(2);
-                querySource(app, "GitHub", String.format(GITHUB_API, GITHUB_OWNER, GITHUB_REPO), results, latch);
-                if (GITEE_OWNER.isEmpty() || GITEE_REPO.isEmpty()) {
-                    latch.countDown();
-                } else {
-                    querySource(app, "Gitee", String.format(GITEE_API, GITEE_OWNER, GITEE_REPO), results, latch);
-                }
-                try { latch.await(14, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-
-                ReleaseInfo best = null;
-                for (ReleaseInfo r : results) {
-                    if (r.tag.isEmpty()) continue;
-                    if (best == null || compareVersions(stripV(r.tag), stripV(best.tag)) > 0) best = r;
-                }
-                if (best == null) {
-                    String msg = "检查更新失败（网络异常或更新源不可达）";
+                String url = String.format(GITHUB_API, GITHUB_OWNER, GITHUB_REPO);
+                Request req = new Request.Builder().url(url).header("User-Agent", "chajianzhushou").build();
+                Response resp = HTTP.newCall(req).execute();
+                if (resp == null || !resp.isSuccessful()) {
+                    String msg = "检查更新失败（网络异常或仓库未发布版本）";
                     if (manual) toast(app, msg);
-                    log(app, "检查更新失败", msg + "（GitHub/Gitee 均无有效结果）");
+                    log(app, "检查更新失败", msg + "（HTTP " + (resp == null ? "null" : resp.code()) + "）");
                     if (cb != null) cb.onDone(false);
                     return;
                 }
-                String current = getVersionName(app);
-                int cmp = compareVersions(stripV(best.tag), stripV(current));
-                if (cmp <= 0) {
-                    if (manual) toast(app, "已是最新版本（" + current + "）");
-                    log(app, "无新版本", "当前=" + current + " 最新=" + best.tag + "（来源 " + best.source + "）");
-                    if (cb != null) cb.onDone(true);
-                    return;
-                }
-                log(app, "发现新版本", "当前=" + current + " 最新=" + best.tag + "（来源 " + best.source + "）");
-                final String fTag = best.tag;
-                final String fNotes = best.notes;
-                final String fApkUrl = best.apkUrl;
-                MAIN.post(() -> showUpdateDialog(app, fTag, fNotes, fApkUrl));
-                if (cb != null) cb.onDone(true);
-            } catch (Exception e) {
-                if (manual) toast(app, "检查更新失败: " + e.getMessage());
-                log(app, "检查更新异常", e == null ? "null" : String.valueOf(e.getMessage()));
-                if (cb != null) cb.onDone(false);
-            }
-        });
-    }
-
-    /** 单个更新源查询结果 */
-    private static final class ReleaseInfo {
-        final String source;
-        final String tag;
-        final String notes;
-        final String apkUrl;
-        ReleaseInfo(String source, String tag, String notes, String apkUrl) {
-            this.source = source;
-            this.tag = tag;
-            this.notes = notes;
-            this.apkUrl = apkUrl;
-        }
-    }
-
-    /** 查询单个源（GitHub 或 Gitee）的 latest release，成功后把结果加入列表 */
-    private static void querySource(final Context app, final String source, final String apiUrl,
-                                    final List<ReleaseInfo> results, final CountDownLatch latch) {
-        Threads.io().execute(() -> {
-            try {
-                Request req = new Request.Builder().url(apiUrl).header("User-Agent", "chajianzhushou").build();
-                Response resp = HTTP.newCall(req).execute();
-                if (resp == null || !resp.isSuccessful()) {
-                    log(app, source + "检查失败", "HTTP " + (resp == null ? "null" : resp.code()));
-                    return;
-                }
                 String bodyStr = resp.body() != null ? resp.body().string() : "";
+                if (bodyStr.isEmpty()) {
+                    if (manual) toast(app, "检查更新失败：响应为空");
+                    log(app, "检查更新失败", "响应为空");
+                    if (cb != null) cb.onDone(false);
+                    return;
+                }
                 JSONObject json = new JSONObject(bodyStr);
                 String tag = json.optString("tag_name", "");
                 String notes = json.optString("body", "");
@@ -170,16 +108,29 @@ public final class UpdateChecker {
                         }
                     }
                 }
-                if (tag.isEmpty() || apkUrl.isEmpty()) {
-                    log(app, source + "数据不完整", "tag=" + tag + " apk=" + apkUrl);
+                String current = getVersionName(app);
+                int cmp = compareVersions(stripV(tag), stripV(current));
+                if (cmp <= 0) {
+                    if (manual) toast(app, "已是最新版本（" + current + "）");
+                    log(app, "无新版本", "当前=" + current + " 最新=" + tag);
+                    if (cb != null) cb.onDone(true);
                     return;
                 }
-                results.add(new ReleaseInfo(source, tag, notes, apkUrl));
-                log(app, source + "检查成功", "最新=" + tag);
+                if (apkUrl.isEmpty()) {
+                    if (manual) toast(app, "新版本 " + tag + " 未附带 APK 文件");
+                    log(app, "新版本缺少APK", "tag=" + tag);
+                    if (cb != null) cb.onDone(true);
+                    return;
+                }
+                log(app, "发现新版本", "当前=" + current + " 最新=" + tag);
+                final String fApkUrl = apkUrl;
+                final String fTag = tag;
+                MAIN.post(() -> showUpdateDialog(app, fTag, notes, fApkUrl));
+                if (cb != null) cb.onDone(true);
             } catch (Exception e) {
-                log(app, source + "检查异常", e == null ? "null" : String.valueOf(e.getMessage()));
-            } finally {
-                latch.countDown();
+                if (manual) toast(app, "检查更新失败: " + e.getMessage());
+                log(app, "检查更新异常", e == null ? "null" : String.valueOf(e.getMessage()));
+                if (cb != null) cb.onDone(false);
             }
         });
     }
