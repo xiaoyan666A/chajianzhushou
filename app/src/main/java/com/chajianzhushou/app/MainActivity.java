@@ -142,8 +142,12 @@ public class MainActivity extends AppCompatActivity {
             long last = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0);
             long now = System.currentTimeMillis();
             if (now - last < 24L * 3600 * 1000) return;
-            prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, now).apply();
-            new Handler(Looper.getMainLooper()).postDelayed(() -> UpdateChecker.check(this, false), 3000);
+            new Handler(Looper.getMainLooper()).postDelayed(() -> UpdateChecker.check(this, false, reached -> {
+                // 只有真正连上服务器才记录节流时间；网络失败不记录，下次启动继续重试
+                if (reached) {
+                    prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, System.currentTimeMillis()).apply();
+                }
+            }), 3000);
         } catch (Exception ignore) {}
     }
 
