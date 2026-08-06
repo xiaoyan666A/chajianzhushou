@@ -42,7 +42,9 @@ jobs:
         run: |
           VERSION=$(grep -oP 'versionName "\K[^"]+' app/build.gradle)
           TAG="v${VERSION}"
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -f "$APK" || { echo "APK not found: $APK"; exit 1; }
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" app/build/outputs/apk/release/app-release.apk \
+          gh release create "$TAG" "$APK" \
             --title "v${VERSION}" \
-            --notes "查件助手自动构建版本 v${VERSION}（GitHub Actions）" || true
+            --notes "查件助手自动构建版本 v${VERSION}（GitHub Actions）"
