@@ -10,8 +10,8 @@ android {
         applicationId "com.chajianzhushou.app"
         minSdk 24
         targetSdk 34
-        versionCode 65
-        versionName "3.44"
+        versionCode 66
+        versionName "3.45"
     }
 
     signingConfigs {
