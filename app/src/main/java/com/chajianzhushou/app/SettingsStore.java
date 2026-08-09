@@ -34,6 +34,8 @@ public class SettingsStore {
     public static final String KEY_PIC_OUTBOUND_ENABLED = "pic_outbound_enabled";
     public static final String KEY_MULTI_TAIL_ENABLED = "multi_tail_enabled";
     public static final String KEY_IMAGE_CACHE_DAYS = "image_cache_days";
+    /** 图片缓存过期时长（小时），新版存储单位；旧版按天存于 KEY_IMAGE_CACHE_DAYS */
+    public static final String KEY_IMAGE_CACHE_EXPIRE_HOURS = "image_cache_expire_hours";
     public static final String KEY_LOG_RETAIN_DAYS = "log_retain_days";
     public static final String KEY_MIMO_API_KEY = "mimo_api_key";
     public static final String KEY_MIMO_API_KEY_LOCKED = "mimo_api_key_locked";

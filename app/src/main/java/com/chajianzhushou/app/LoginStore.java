@@ -27,8 +27,14 @@ public class LoginStore {
     public static final String KEY_YS_DT = "local_ys_dt";
     public static final String KEY_STAFF_CODE = "local_staff_code";
 
-    /** token 有效时长：24 小时（与服务器无明确过期时间时保持一致） */
-    public static final long TOKEN_TTL_MS = 24 * 60 * 60 * 1000L;
+    /**
+     * token 本地有效时长假设：网关登录/刷新响应里没有有效期字段（已核对反编译兔喜 TokenInfoResult），
+     * 官方 App 同样是"客户端自估"。24h 实测次日早晨即被网关判"无效的访问令牌"，
+     * 这里改为保守的 12h，并配合"到期前提前换新"与"网关拒绝时自动重登"，不依赖具体有效期也能自愈。
+     */
+    public static final long TOKEN_TTL_MS = 12 * 60 * 60 * 1000L;
+    /** 到期前提前多少毫秒主动用 refreshToken 换新（避免带着已失效 token 去查询） */
+    public static final long TOKEN_REFRESH_AHEAD_MS = 2 * 60 * 60 * 1000L;
 
     private final SharedPreferences prefs;
 

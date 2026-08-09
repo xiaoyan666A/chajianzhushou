@@ -45,8 +45,8 @@ import okhttp3.Response;
 public class SettingsFragment extends Fragment {
 
     private static final String TAG = "SettingsFragment";
-    // 图片缓存过期天数选项（天）
-    private static final int[] IMAGE_CACHE_DAYS_VALUES = {7, 14, 21, 30};
+// 图片缓存过期时长选项（小时）：1/2/3 小时 + 1/2/3/7/14/21/30 天
+private static final int[] IMAGE_CACHE_EXPIRE_HOURS = {1, 2, 3, 24, 48, 72, 168, 336, 504, 720};
     // 日志保留天数选项（天）
     private static final int[] LOG_RETAIN_DAYS_VALUES = {7, 14, 30, 90};
     // 字号重建防抖：3 秒内最多重建一次，杜绝任何意外触发的无限重建循环
@@ -444,11 +444,13 @@ public class SettingsFragment extends Fragment {
             });
         }
 
-        // 图片缓存过期天数（7/14/21/30 天）
+        // 图片缓存过期时长（1/2/3 小时 + 1/2/3/7/14/21/30 天）
         spinnerImageCacheDays = view.findViewById(R.id.spinner_image_cache_days);
         if (spinnerImageCacheDays != null) {
             java.util.List<String> cacheDayOptions = new java.util.ArrayList<>();
-            for (int v : IMAGE_CACHE_DAYS_VALUES) cacheDayOptions.add(v + " 天");
+            for (int h : IMAGE_CACHE_EXPIRE_HOURS) {
+                cacheDayOptions.add(h < 24 ? h + " 小时" : (h / 24) + " 天");
+            }
             ArrayAdapter<String> cacheDayAdapter = new ArrayAdapter<>(
                     requireContext(), R.layout.spinner_item, cacheDayOptions);
             cacheDayAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
@@ -456,10 +458,16 @@ public class SettingsFragment extends Fragment {
             spinnerImageCacheDays.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
                     if (isLoadingSettings) return;
-                    int days = IMAGE_CACHE_DAYS_VALUES[Math.min(pos, IMAGE_CACHE_DAYS_VALUES.length - 1)];
-                    settingsStore.set(SettingsStore.KEY_IMAGE_CACHE_DAYS, days);
-                    Log.d(TAG, "图片缓存过期天数: " + days);
-                    try { LogRecorder.info(requireContext(), "Settings", "图片缓存过期天数", days + " 天"); } catch (Exception ignore) {}
+                    int hours = IMAGE_CACHE_EXPIRE_HOURS[Math.min(pos, IMAGE_CACHE_EXPIRE_HOURS.length - 1)];
+                    settingsStore.set(SettingsStore.KEY_IMAGE_CACHE_EXPIRE_HOURS, hours);
+                    // 迁移完成：清除旧的按天存储
+                    try {
+                        requireContext().getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE)
+                                .edit().remove(SettingsStore.KEY_IMAGE_CACHE_DAYS).apply();
+                    } catch (Exception ignore) {}
+                    String label = hours < 24 ? hours + " 小时" : (hours / 24) + " 天";
+                    Log.d(TAG, "图片缓存过期时长: " + label);
+                    try { LogRecorder.info(requireContext(), "Settings", "图片缓存过期时长", label); } catch (Exception ignore) {}
                 }
                 @Override public void onNothingSelected(AdapterView<?> parent) {}
             });
@@ -1280,13 +1288,16 @@ public class SettingsFragment extends Fragment {
                         prefs.getInt(SettingsStore.KEY_GRID_MANUAL_COLUMNS_LANDSCAPE, 4), manual);
             }
 
-            // 图片缓存过期天数（7/14/21/30）
+            // 图片缓存过期时长（新值按小时存储；旧版按天存储，自动换算迁移）
             if (spinnerImageCacheDays != null) {
-                int days = prefs.getInt(SettingsStore.KEY_IMAGE_CACHE_DAYS, 7);
+                int hours = prefs.getInt(SettingsStore.KEY_IMAGE_CACHE_EXPIRE_HOURS, -1);
+                if (hours <= 0) {
+                    hours = prefs.getInt(SettingsStore.KEY_IMAGE_CACHE_DAYS, 7) * 24;
+                }
                 int best = 0;
                 int bestDiff = Integer.MAX_VALUE;
-                for (int i = 0; i < IMAGE_CACHE_DAYS_VALUES.length; i++) {
-                    int diff = Math.abs(IMAGE_CACHE_DAYS_VALUES[i] - days);
+                for (int i = 0; i < IMAGE_CACHE_EXPIRE_HOURS.length; i++) {
+                    int diff = Math.abs(IMAGE_CACHE_EXPIRE_HOURS[i] - hours);
                     if (diff < bestDiff) { bestDiff = diff; best = i; }
                 }
                 spinnerImageCacheDays.setSelection(best);

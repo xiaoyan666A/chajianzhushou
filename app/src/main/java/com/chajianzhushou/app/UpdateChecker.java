@@ -2,7 +2,6 @@ package com.chajianzhushou.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
@@ -12,6 +11,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
@@ -168,12 +169,25 @@ public final class UpdateChecker {
     }
 
     private static void downloadAndInstall(final Context ctx, final String apkUrl) {
-        final ProgressDialog pd = new ProgressDialog(ctx);
-        pd.setTitle("正在下载更新");
-        pd.setMessage("请稍候...");
-        pd.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
-        pd.setCancelable(false);
-        pd.show();
+        // 自定义主题弹窗（AlertDialog 自动套用 Theme.Chajianzhushou.Dialog，与 App 整体一致）
+        final AlertDialog pd;
+        final ProgressBar bar;
+        final TextView tvStatus;
+        final TextView tvPercent;
+        try {
+            pd = new AlertDialog.Builder(ctx)
+                    .setTitle("正在下载更新")
+                    .setView(R.layout.dialog_update_progress)
+                    .setCancelable(false)
+                    .create();
+            pd.show();
+            bar = pd.findViewById(R.id.download_progress_bar);
+            tvStatus = pd.findViewById(R.id.download_progress_text);
+            tvPercent = pd.findViewById(R.id.download_progress_percent);
+        } catch (Exception e) {
+            toast(ctx, "无法打开下载进度窗口: " + e.getMessage());
+            return;
+        }
         Threads.io().execute(() -> {
             File dir = new File(ctx.getCacheDir(), "updates");
             if (!dir.exists()) dir.mkdirs();
@@ -205,6 +219,7 @@ public final class UpdateChecker {
                 }
                 if (total <= 0) total = -1;
                 long written = done;
+                long lastUi = 0L;
                 try (InputStream in = resp.body().byteStream();
                      FileOutputStream fos = new FileOutputStream(part, append)) {
                     byte[] buf = new byte[8192];
@@ -212,19 +227,16 @@ public final class UpdateChecker {
                     while ((n = in.read(buf)) > 0) {
                         fos.write(buf, 0, n);
                         written += n;
-                        if (total > 0) {
-                            final int pct = (int) (written * 100 / total);
-                            if (pct > 100) continue;
-                            MAIN.post(() -> {
-                                try {
-                                    pd.setProgress(pct);
-                                    pd.setMessage("已下载 " + pct + "%");
-                                } catch (Exception ignore) {}
-                            });
+                        long now = System.currentTimeMillis();
+                        // 节流：未知总大小时至少 120ms 刷一次，避免高频刷新主线程
+                        if (now - lastUi >= 120L) {
+                            lastUi = now;
+                            updateProgress(pd, bar, tvStatus, tvPercent, written, total);
                         }
                     }
                     fos.flush();
                 }
+                updateProgress(pd, bar, tvStatus, tvPercent, written, total);
                 // 下载完成：把 .part 改名为正式 APK（rename 失败时兜底复制）
                 if (!part.renameTo(apk)) {
                     try (java.io.FileInputStream fin = new java.io.FileInputStream(part);
@@ -248,6 +260,29 @@ public final class UpdateChecker {
             } catch (Exception e) {
                 fail(pd, ctx, "下载失败: " + e.getMessage());
             }
+        });
+    }
+
+    /** 更新下载进度：已知总大小显示百分比，未知则转不确定进度条并显示已下载大小 */
+    private static void updateProgress(final AlertDialog pd, final ProgressBar bar, final TextView tvStatus,
+                                       final TextView tvPercent, final long done, final long total) {
+        MAIN.post(() -> {
+            try {
+                if (pd == null || !pd.isShowing()) return;
+                String mb = String.format(java.util.Locale.CHINA, "%.1f MB", done / 1048576.0);
+                if (total > 0) {
+                    int pct = (int) Math.min(100L, done * 100L / total);
+                    bar.setIndeterminate(false);
+                    bar.setProgress(pct);
+                    tvStatus.setText("正在下载更新包...");
+                    tvPercent.setText(pct + "%  ·  " + mb);
+                } else {
+                    // 服务器没给总大小：进度条转"流动"模式，仍然显示已下载大小
+                    bar.setIndeterminate(true);
+                    tvStatus.setText("正在下载更新包...");
+                    tvPercent.setText(mb);
+                }
+            } catch (Exception ignore) {}
         });
     }
 
@@ -308,7 +343,7 @@ public final class UpdateChecker {
         }
     }
 
-    private static void fail(final ProgressDialog pd, final Context ctx, final String msg) {
+    private static void fail(final AlertDialog pd, final Context ctx, final String msg) {
         MAIN.post(() -> {
             try { pd.dismiss(); } catch (Exception ignore) {}
             toast(ctx, msg);

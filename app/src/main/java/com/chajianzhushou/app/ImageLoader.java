@@ -13,7 +13,9 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -26,8 +28,9 @@ import okhttp3.ResponseBody;
  */
 public class ImageLoader {
     private static final String TAG = "ImageLoader";
-    private static final int MAX_CACHE_MB = 8;
-    private static final ConcurrentHashMap<String, Bitmap> sCache = new ConcurrentHashMap<>();
+    // 内存缓存上限提到 32MB（1080 图约 14 张）；按访问顺序做 LRU 淘汰
+    private static final int MAX_CACHE_MB = 32;
+    private static final LinkedHashMap<String, Bitmap> sCache = new LinkedHashMap<>(128, 0.75f, true);
     private static long sCacheBytes = 0L;
 
     private static ImageLoader sInstance;
@@ -50,6 +53,28 @@ public class ImageLoader {
         sCacheBytes = 0L;
     }
 
+    /** 读缓存（LinkedHashMap accessOrder=true，访问会刷新 LRU 顺序） */
+    private static synchronized Bitmap getCached(String url) {
+        if (url == null) return null;
+        Bitmap b = sCache.get(url);
+        return (b != null && !b.isRecycled()) ? b : null;
+    }
+
+    /** 写缓存：超限时按 LRU 顺序淘汰最久未用的图片，而不是整清 */
+    private static synchronized void putCached(String url, Bitmap bmp) {
+        if (url == null || bmp == null || bmp.isRecycled()) return;
+        Bitmap prev = sCache.put(url, bmp);
+        if (prev != null) sCacheBytes -= prev.getByteCount();
+        sCacheBytes += bmp.getByteCount();
+        Iterator<Map.Entry<String, Bitmap>> it = sCache.entrySet().iterator();
+        while (sCacheBytes > MAX_CACHE_MB * 1024L * 1024L && it.hasNext()) {
+            Map.Entry<String, Bitmap> e = it.next();
+            Bitmap b = e.getValue();
+            if (b != null) sCacheBytes -= b.getByteCount();
+            it.remove();
+        }
+    }
+
     public void load(String url, ImageView target, int placeholderResId) {
         if (target == null) return;
         target.setImageResource(placeholderResId);
@@ -63,8 +88,8 @@ public class ImageLoader {
         final WeakReference<ImageView> ref = new WeakReference<>(target);
 
         // 1) 命中缓存直接显示
-        Bitmap cached = sCache.get(url);
-        if (cached != null && !cached.isRecycled()) {
+        Bitmap cached = getCached(url);
+        if (cached != null) {
             ImageView v = ref.get();
             if (v != null && url.equals(v.getTag(R.id.image_loader_tag))) {
                 v.setImageBitmap(cached);
@@ -102,14 +127,8 @@ public class ImageLoader {
                     return;
                 }
 
-                // 写缓存（简单 LRU：超了就清空一半）
-                final int sz = bitmap.getByteCount();
-                if (sCacheBytes + sz > MAX_CACHE_MB * 1024L * 1024L) {
-                    sCache.clear();
-                    sCacheBytes = 0;
-                }
-                sCache.put(tagUrl, bitmap);
-                sCacheBytes += sz;
+                // 写内存缓存（LRU 淘汰）
+                putCached(tagUrl, bitmap);
 
                 mainHandler.post(() -> {
                     ImageView v = ref.get();
@@ -127,12 +146,18 @@ public class ImageLoader {
         });
     }
 
-    /**
-     * 带磁盘缓存的图片加载。
-     * 优先读取本地缓存（以 billCode 为 key），缓存命中则直接解码显示；
-     * 未命中则走网络下载并同步写入磁盘缓存。
-     */
+    /** 带磁盘缓存的图片加载（无照片身份，按 URL 校验，兼容旧调用） */
     public void load(String url, String billCode, ImageView target, int placeholderResId) {
+        load(url, billCode, null, target, placeholderResId);
+    }
+
+    /**
+     * 带磁盘缓存的图片加载（卡片链路）。
+     * @param photoKey 照片身份（原始图片路径）。签名 URL 每次解析都会变，但照片未换时
+     *                 路径不变 → 命中同一份磁盘缓存，避免切页/刷新时重复下载；
+     *                 照片真换了（新路径）→ 缓存自动失效重新下载。null/空时退回按 URL 校验（旧行为）。
+     */
+    public void load(String url, String billCode, String photoKey, ImageView target, int placeholderResId) {
         if (target == null) return;
         target.setImageResource(placeholderResId);
         if (url == null || url.length() == 0) return;
@@ -141,8 +166,8 @@ public class ImageLoader {
         final WeakReference<ImageView> ref = new WeakReference<>(target);
 
         // 0) 内存缓存命中
-        Bitmap cached = sCache.get(url);
-        if (cached != null && !cached.isRecycled()) {
+        Bitmap cached = getCached(url);
+        if (cached != null) {
             ImageView v = ref.get();
             if (v != null && url.equals(v.getTag(R.id.image_loader_tag))) {
                 v.setImageBitmap(cached);
@@ -153,11 +178,14 @@ public class ImageLoader {
         // 1) 磁盘缓存命中 → 直接解码显示（校验URL：出库换新照片后旧图自动作废）
         if (billCode != null && billCode.length() > 0) {
             ImageCacheManager.init(null); // 确保缓存目录已创建
-            File cacheFile = ImageCacheManager.getCachedFile(billCode, url);
+            File cacheFile = (photoKey != null && !photoKey.isEmpty())
+                    ? ImageCacheManager.getCachedFileByPhotoKey(billCode, photoKey)
+                    : ImageCacheManager.getCachedFile(billCode, url);
             if (cacheFile != null) {
+                final File cf = cacheFile;
                 Threads.decode().execute(() -> {
                     try {
-                        byte[] bytes = readAllBytes(new FileInputStream(cacheFile));
+                        byte[] bytes = readAllBytes(new FileInputStream(cf));
                         Bitmap bitmap = decodeSampledBitmap(bytes, 1080, 1080);
                         if (bitmap != null) {
                             putCachedBitmap(tagUrl, bitmap);
@@ -190,9 +218,13 @@ public class ImageLoader {
                 }
                 if (bytes == null || bytes.length == 0) return;
 
-                // 写磁盘缓存（记录URL指纹，用于下次校验是否已换新照片）
+                // 写磁盘缓存：有照片身份按原始路径写，否则按 URL 写
                 if (billCode != null && billCode.length() > 0) {
-                    ImageCacheManager.cacheBytes(billCode, url, bytes);
+                    if (photoKey != null && !photoKey.isEmpty()) {
+                        ImageCacheManager.cacheBytesByPhotoKey(billCode, photoKey, bytes);
+                    } else {
+                        ImageCacheManager.cacheBytes(billCode, url, bytes);
+                    }
                 }
 
                 Bitmap bitmap = decodeSampledBitmap(bytes, 1080, 1080);
@@ -253,22 +285,12 @@ public class ImageLoader {
 
     /** 查询缓存（用于预览大图，命中则直接展示无需再次下载） */
     public Bitmap getCachedBitmap(String url) {
-        if (url == null) return null;
-        Bitmap b = sCache.get(url);
-        return (b != null && !b.isRecycled()) ? b : null;
+        return getCached(url);
     }
 
     /** 写入缓存（用于大图预览页下载完后也缓存一份，避免下次列表又要重新下载） */
     public void putCachedBitmap(String url, Bitmap bitmap) {
-        if (url == null || bitmap == null || bitmap.isRecycled()) return;
-        final int sz = bitmap.getByteCount();
-        if (sCacheBytes + sz > MAX_CACHE_MB * 1024L * 1024L) {
-            sCache.clear();
-            sCacheBytes = 0;
-        }
-        Bitmap prev = sCache.put(url, bitmap);
-        if (prev != null) sCacheBytes -= prev.getByteCount();
-        sCacheBytes += sz;
+        putCached(url, bitmap);
     }
 
     /** 预览大图使用：无最大尺寸限制，允许 ARGB_8888；下载完成回调到主线程 */
@@ -293,8 +315,8 @@ public class ImageLoader {
         target.setTag(R.id.image_loader_tag, url);
         final WeakReference<ImageView> ref = new WeakReference<>(target);
 
-        Bitmap cached = sCache.get(url);
-        if (cached != null && !cached.isRecycled()) {
+        Bitmap cached = getCached(url);
+        if (cached != null) {
             ImageView v = ref.get();
             if (v != null && url.equals(v.getTag(R.id.image_loader_tag))) {
                 v.setImageBitmap(cached);

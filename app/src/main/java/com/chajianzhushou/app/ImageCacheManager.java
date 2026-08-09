@@ -9,6 +9,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.security.MessageDigest;
 
 /**
  * 磁盘图片缓存管理器。
@@ -19,6 +20,7 @@ public class ImageCacheManager {
     private static final String TAG = "ImgCache";
     private static final String CACHE_DIR = "pkg_images";
     private static final String KEY_CACHE_DAYS = "image_cache_days";
+    private static final String KEY_CACHE_HOURS = "image_cache_expire_hours";
     private static final int DEFAULT_CACHE_DAYS = 7;
     private static final int MAX_CACHE_DAYS = 90;
 
@@ -50,10 +52,14 @@ public class ImageCacheManager {
             Context ctx = MainActivity.getAppContext();
             if (ctx == null) return DEFAULT_CACHE_DAYS * 24L * 3600 * 1000L;
             SharedPreferences prefs = ctx.getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
-            int days = prefs.getInt(KEY_CACHE_DAYS, DEFAULT_CACHE_DAYS);
-            if (days < 1) days = 1;
-            if (days > MAX_CACHE_DAYS) days = MAX_CACHE_DAYS;
-            return days * 24L * 3600 * 1000L;
+            // 新版按小时存储；旧版按天存储，读到旧值自动按 1 天=24 小时迁移
+            int hours = prefs.getInt(KEY_CACHE_HOURS, -1);
+            if (hours <= 0) {
+                hours = prefs.getInt(KEY_CACHE_DAYS, DEFAULT_CACHE_DAYS) * 24;
+            }
+            if (hours < 1) hours = 1;
+            if (hours > MAX_CACHE_DAYS * 24) hours = MAX_CACHE_DAYS * 24;
+            return hours * 3600L * 1000L;
         } catch (Exception e) {
             return DEFAULT_CACHE_DAYS * 24L * 3600 * 1000L;
         }
@@ -142,6 +148,54 @@ public class ImageCacheManager {
         }
     }
 
+    /** 照片身份（原始图片路径）→ 稳定短哈希，作为缓存文件名后缀 */
+    private static String photoKeyHash(String photoKey) {
+        if (photoKey == null || photoKey.isEmpty()) return "none";
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] d = md.digest(photoKey.getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 8; i++) sb.append(String.format("%02x", d[i] & 0xFF));
+            return sb.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(photoKey.hashCode());
+        }
+    }
+
+    /**
+     * 按“单号 + 原始图片路径”读取磁盘缓存。
+     * 签名 URL 每次解析都会变，但照片没换时路径不变 → 命中同一份缓存，避免重复下载；
+     * 照片真换了（新路径）→ 新文件名 → 自然重新下载。
+     */
+    public static File getCachedFileByPhotoKey(String billCode, String photoKey) {
+        if (billCode == null || billCode.isEmpty()) return null;
+        File dir = ensureDir();
+        if (dir == null) return null;
+        File f = new File(dir, billCode + "_" + photoKeyHash(photoKey) + ".jpg");
+        if (f.exists() && f.length() > 0) {
+            if (System.currentTimeMillis() - f.lastModified() > getMaxAgeMs()) {
+                f.delete();
+                return null;
+            }
+            return f;
+        }
+        return null;
+    }
+
+    /** 按“单号 + 原始图片路径”写入磁盘缓存 */
+    public static void cacheBytesByPhotoKey(String billCode, String photoKey, byte[] bytes) {
+        if (billCode == null || billCode.isEmpty() || bytes == null || bytes.length == 0) return;
+        File dir = ensureDir();
+        if (dir == null) return;
+        File f = new File(dir, billCode + "_" + photoKeyHash(photoKey) + ".jpg");
+        try (FileOutputStream out = new FileOutputStream(f)) {
+            out.write(bytes);
+            out.flush();
+        } catch (Exception e) {
+            Log.w(TAG, "缓存写入失败: " + billCode + " " + e.getMessage());
+            f.delete();
+        }
+    }
     /** 将已下载的字节数组写入磁盘缓存 */
     public static void cacheBytes(String billCode, String url, byte[] bytes) {
         if (billCode == null || billCode.isEmpty() || bytes == null || bytes.length == 0) return;

@@ -65,7 +65,7 @@ public class ImageUrlResolver {
         if (iv == null) return "";
         if (imageUrl.length() > 0 && apiService != null) {
             String resolved = apiService.resolveImageUrl(imageUrl);
-            ImageLoader.with(apiService.getOkHttpClient()).load(resolved, trackingNumber, iv, R.drawable.bg_image_placeholder);
+            ImageLoader.with(apiService.getOkHttpClient()).load(resolved, trackingNumber, rawImgPath, iv, R.drawable.bg_image_placeholder);
             return resolved;
         }
         iv.setImageResource(R.drawable.bg_image_placeholder);
@@ -102,7 +102,7 @@ public class ImageUrlResolver {
                         Object t = iv.getTag(R.id.image_loader_tag);
                         if (!marker.equals(t)) return;
                         ImageLoader.with(apiService != null ? apiService.getOkHttpClient() : null)
-                                .load(url, billCode, iv, R.drawable.bg_image_placeholder);
+                                .load(url, billCode, rawImgPath, iv, R.drawable.bg_image_placeholder);
                         putCachedUrl(billCode, rawImgPath, url);
                         if (cb != null) cb.onUrl(billCode, url);
                     });

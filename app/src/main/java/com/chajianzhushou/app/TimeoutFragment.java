@@ -1109,7 +1109,7 @@ public class TimeoutFragment extends Fragment {
                                 if (iv.getTag(R.id.image_loader_tag) == null) return;
                                 if (!marker.equals(iv.getTag(R.id.image_loader_tag))) return; // 卡片已复用/重建，丢弃迟到结果
                                 if (apiService != null) {
-                                    ImageLoader.with(apiService.getOkHttpClient()).load(url, billCode, iv, R.drawable.bg_image_placeholder);
+                                    ImageLoader.with(apiService.getOkHttpClient()).load(url, billCode, rawImgPath, iv, R.drawable.bg_image_placeholder);
                                 }
                                 if (previewUrlRef != null) previewUrlRef.set(url);
                             } catch (Throwable ignore) {}

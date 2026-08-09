@@ -265,6 +265,11 @@ public class DirectApiClient {
     private synchronized JSONObject ensureLogin() throws Exception {
         long now = System.currentTimeMillis();
         if (accessToken != null && accessToken.length() > 0 && tokenExpiresAt > now) {
+            // 本地仍未到期，但临近到期（<2小时）时提前用 refreshToken 换新，
+            // 避免网关侧实际有效期更短、带着已失效的 token 去查询
+            if (tokenExpiresAt - now < LoginStore.TOKEN_REFRESH_AHEAD_MS) {
+                if (tryRefreshToken()) return buildAuthResult();
+            }
             return buildAuthResult();
         }
         // 优先使用缓存的 token（进程重启后避免每次启动都重新登录）
@@ -1009,7 +1014,23 @@ public class DirectApiClient {
 
     // ===== Query Timeout Packages =====
 
+    /**
+     * 查询超时件（带 token 自动刷新重试）：
+     * 网关返回 token 失效 → 清缓存 → refreshToken 无感换新 / 保存的账号密码自动重登 → 重试一次。
+     * 仅当换新与密码重登都失败（或密码为空）才抛出"登录已失效"。
+     */
     public JSONArray queryTimeoutPackages() throws Exception {
+        try {
+            return doQueryTimeoutPackages();
+        } catch (TokenExpiredException tee) {
+            if (reloginAfterTokenExpired()) {
+                return doQueryTimeoutPackages();
+            }
+            throw new Exception("登录已失效，请重新登录");
+        }
+    }
+
+    private JSONArray doQueryTimeoutPackages() throws Exception {
         Log.d(TAG, "直接查询超时件");
         try { LogRecorder.info(appContext, "DirectApi", "查询超时件", ""); } catch (Exception ignore) {}
         JSONObject auth = ensureLogin();
@@ -1050,6 +1071,11 @@ public class DirectApiClient {
 
             if (!body.optBoolean("status") || body.isNull("result")) {
                 String msg = body.optString("message", "未知错误");
+                // token 失效类错误：抛专用异常，由外层自动换新/重登后重试一次
+                if (msg.contains("token") || msg.contains("登录") || msg.contains("未授权")
+                        || msg.contains("过期") || msg.contains("无效") || msg.contains("令牌")) {
+                    throw new TokenExpiredException(msg);
+                }
                 try { LogRecorder.error(appContext, "DirectApi", "超时查询失败", msg); } catch (Exception ignore) {}
                 throw new Exception("超时查询失败: " + msg);
             }

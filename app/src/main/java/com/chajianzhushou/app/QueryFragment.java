@@ -97,10 +97,14 @@ public class QueryFragment extends Fragment {
     private String lastQueriedBillCode = "";
     // 最后一次手动查询使用的类型：自动刷新固定用它，手动切换类型不影响已开始的自动刷新
     private String lastQueriedType = "phoneTail";
+    // 当前列表对应的查询条件（单号+类型）：自动刷新合并"已出库"时校验是否同一条件，条件变了不合并
+    private String listQueryKey = "";
     // 刚刚出库标记：本次会话中由"待取件"变成"已出库"的包裹单号集合（手动重新查询时清空）
     private final java.util.Set<String> justOutboundBillCodes = new java.util.HashSet<>();
     // 渲染代数：renderList 每次执行自增，用于让过期的异步回调（如颗粒消失动画）不再重复渲染
     private int renderGeneration = 0;
+    // 上次渲染时的网格配置指纹：切回本页时若配置没变则跳过整表重建，避免列表图片重复加载
+    private String lastGridRenderKey = "";
     private boolean isGridView = false;
     private boolean showDelivered = true;
     private boolean isAutoRefresh = false;
@@ -618,11 +622,15 @@ public class QueryFragment extends Fragment {
         if (!hidden && isViewReady) {
             refreshSettingsFromPrefs();
         }
-        // 从设置页切回查件页：重新按最新"手动每行卡片数"设置渲染网格
+        // 从设置页切回查件页：仅当"手动每行卡片数"等网格配置真正变化时才重建列表，
+        // 避免每次切换都全量重建导致列表图片全部重新加载
         if (!hidden && isViewReady && isGridView
                 && currentPackages != null && currentPackages.size() > 0) {
             mainHandler.post(() -> {
                 if (!isViewReady) return;
+                String key = gridRenderKey();
+                if (key.equals(lastGridRenderKey)) return;
+                lastGridRenderKey = key;
                 boolean wasAuto = isAutoRefresh;
                 isAutoRefresh = false;
                 renderList();
@@ -1213,14 +1221,11 @@ public class QueryFragment extends Fragment {
         if (autoRefreshController != null) autoRefreshController.stop();
     }
 
-    /** 自动刷新一轮：读取查询条件并执行（输入框清空时沿用最后一次查询值） */
+    /** 自动刷新一轮：始终沿用最后一次查询条件（手动改输入框不生效，需点"查询"才切换） */
     private void performAutoRefreshTick() {
         if (!isViewReady) return;
         if (etBillCode != null) {
-            String q = etBillCode.getText().toString().trim();
-            if (q.length() == 0) {
-                q = lastQueriedBillCode;
-            }
+            String q = lastQueriedBillCode;
             if (q.length() > 0) {
                 if (performQuery(false, true, q)) {
                     // 仅真正发起查询才计入自动刷新轮次（被并发/节流拒绝的 tick 不计数）
@@ -1462,10 +1467,13 @@ public class QueryFragment extends Fragment {
         final List<JSONObject> oldPackages = currentPackages; // 保存旧列表用于合并
         currentPackages = newPackages;
 
+        // 本次查询条件：仅当与当前列表同条件时才做"保留已出库"合并；条件变了（换了查询值）直接整表替换，不混列表
+        final String currentQueryKey = lastQueriedBillCode + "|" + lastQueriedType;
+
         java.util.Set<String> autoFreshBillCodes = null; // pendingOnly 响应基线，供补查"消失的待取件"用
         List<String> gonePendingBillCodes = new ArrayList<>(); // 自动刷新+关闭"显示已出库"：消失的待取件（刚出库）→ 颗粒化渐隐
         boolean deferRender = false; // 需要先播完颗粒消失动画再渲染
-        if (isAuto && oldPackages != null && oldPackages.size() > 0) {
+        if (isAuto && oldPackages != null && oldPackages.size() > 0 && currentQueryKey.equals(listQueryKey)) {
             java.util.Set<String> newBillCodes = new java.util.HashSet<>();
             for (JSONObject pkg : newPackages) {
                 String bc = pkgBillCode(pkg);
@@ -1512,6 +1520,8 @@ public class QueryFragment extends Fragment {
         if (isAuto && sd && autoFreshBillCodes != null) {
             refreshMissingPendingAfterAutoRefresh(oldPackages, autoFreshBillCodes);
         }
+        // 记录当前列表对应的查询条件，供下一轮自动刷新合并时校验
+        listQueryKey = currentQueryKey;
         long _parseFilterCost = System.currentTimeMillis() - _tParseStart;
 
         // TTS
@@ -1997,6 +2007,24 @@ public class QueryFragment extends Fragment {
 
     // ===== Render List =====
 
+    /** 计算影响网格渲染的配置指纹（竖排开关+手动列数+方向+容器宽度），切回本页时判断是否需要重建列表 */
+    private String gridRenderKey() {
+        try {
+            Context ctx = getContext();
+            if (ctx == null) return "";
+            SharedPreferences prefs = ctx.getSharedPreferences("chajianzhushou_prefs", Context.MODE_PRIVATE);
+            boolean manual = prefs.getBoolean(SettingsStore.KEY_GRID_MANUAL_ENABLED, false);
+            int pCols = prefs.getInt(SettingsStore.KEY_GRID_MANUAL_COLUMNS_PORTRAIT, 0);
+            int lCols = prefs.getInt(SettingsStore.KEY_GRID_MANUAL_COLUMNS_LANDSCAPE, 0);
+            int orientation = ctx.getResources().getConfiguration().orientation;
+            int width = (resultsContainer != null && resultsContainer.getWidth() > 0) ? resultsContainer.getWidth() : -1;
+            return (isGridView ? "G" : "L") + "|" + (manual ? 1 : 0) + "|" + pCols + "|" + lCols
+                    + "|" + orientation + "|" + width;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     private int calculateGridSpanCount() {
         try {
             Context ctx = getContext();
@@ -2452,6 +2480,8 @@ public class QueryFragment extends Fragment {
         }
         // 清理已不在列表中的超时件闪烁任务
         packageCardFactory.pruneBlink(currentPackages);
+        // 记录本次渲染时的网格配置指纹，供切回本页时判断是否需要重建
+        lastGridRenderKey = gridRenderKey();
     }
 
     // ===== 自动刷新图片热更新 =====
@@ -2519,8 +2549,8 @@ public class QueryFragment extends Fragment {
             String curUrl = (curTag != null) ? curTag.toString() : "";
             if (newUrl.equals(curUrl)) return;
 
-            // URL 变化 → 重新加载（内存/磁盘缓存按 URL 校验，旧图自动作废，换到新照片）
-            ImageLoader.with(apiService.getOkHttpClient()).load(newUrl, tno, iv, R.drawable.bg_image_placeholder);
+            // URL 变化 → 重新加载（磁盘缓存按照片身份校验，照片未换则直接复用缓存图）
+            ImageLoader.with(apiService.getOkHttpClient()).load(newUrl, tno, rawImgPath, iv, R.drawable.bg_image_placeholder);
             if (tno.length() > 0 && imageUrlResolver != null) imageUrlResolver.putCachedUrl(tno, rawImgPath, newUrl);
 
             // 若图片预览正打开且展示的正是该单号 → 同步切换大图
