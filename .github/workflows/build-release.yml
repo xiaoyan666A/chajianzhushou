@@ -38,6 +38,26 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
+      - name: Upload APK to Gitee Release (国内下载源)
+        env:
+          GITEE_OWNER: ${{ secrets.GITEE_OWNER }}
+          GITEE_REPO: ${{ secrets.GITEE_REPO }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          if [ -z "$GITEE_OWNER" ] || [ -z "$GITEE_REPO" ] || [ -z "$GITEE_TOKEN" ]; then
+            echo "::warning::未配置 Gitee 凭据，本次跳过 Gitee 上传（App 将回退 GitHub 下载）"
+            exit 0
+          fi
+          VERSION=$(grep -oP 'versionName "\K[^"]+' app/build.gradle)
+          python3 scripts/upload_gitee.py \
+            --apk app/build/outputs/apk/release/app-release.apk \
+            --tag "v${VERSION}" \
+            --owner "$GITEE_OWNER" \
+            --repo "$GITEE_REPO" \
+            --token "$GITEE_TOKEN" | tee /tmp/gitee_upload.out
+          # 上传失败不阻塞发版：Release 照发，App 自动降级到 GitHub 下载
+          grep -q '^DIRECT_URL=' /tmp/gitee_upload.out || echo "::error::Gitee 上传失败，本次回退 GitHub 下载"
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -54,6 +74,13 @@ jobs:
             git log --oneline --no-merges "$PREV_TAG"..HEAD 2>/dev/null | sed 's/^/- /' >> "$NOTES_FILE" || true
           else
             echo "- 首次发布" >> "$NOTES_FILE"
+          fi
+          # 追加 Gitee 下载直链（App 检测更新时优先使用国内直链，GitHub 附件兜底）
+          if [ -f /tmp/gitee_upload.out ]; then
+            DIRECT_URL=$(grep '^DIRECT_URL=' /tmp/gitee_upload.out | head -1 | cut -d= -f2-)
+            if [ -n "$DIRECT_URL" ]; then
+              printf '下载直链: %s\n' "$DIRECT_URL" >> "$NOTES_FILE"
+            fi
           fi
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$TAG" "$APK" \

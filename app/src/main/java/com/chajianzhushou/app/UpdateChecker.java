@@ -101,18 +101,23 @@ public final class UpdateChecker {
                 JSONObject json = new JSONObject(bodyStr);
                 String tag = json.optString("tag_name", "");
                 String notes = json.optString("body", "");
-                String apkUrl = "";
+                // 直链优先：Release 说明里的"下载直链"可有多行（如 Gitee 国内直链），按出现顺序尝试
+                java.util.List<String> urls = extractDirectUrls(notes);
+                // GitHub asset 作为最后兜底（直链全部失败时回退）
+                String githubUrl = "";
                 JSONArray assets = json.optJSONArray("assets");
                 if (assets != null) {
                     for (int i = 0; i < assets.length(); i++) {
                         JSONObject a = assets.optJSONObject(i);
                         String name = (a == null) ? "" : a.optString("name", "");
                         if (name.endsWith(".apk")) {
-                            apkUrl = a.optString("browser_download_url", "");
+                            githubUrl = a.optString("browser_download_url", "");
                             break;
                         }
                     }
                 }
+                if (!githubUrl.isEmpty() && !urls.contains(githubUrl)) urls.add(githubUrl);
+                String apkUrl = urls.isEmpty() ? "" : urls.get(0);
                 String current = getVersionName(app);
                 int cmp = compareVersions(stripV(tag), stripV(current));
                 if (cmp <= 0) {
@@ -128,9 +133,9 @@ public final class UpdateChecker {
                     return;
                 }
                 log(app, "发现新版本", "当前=" + current + " 最新=" + tag);
-                final String fApkUrl = apkUrl;
+                final java.util.List<String> fUrls = urls;
                 final String fTag = tag;
-                MAIN.post(() -> showUpdateDialog(uiCtx, fTag, notes, fApkUrl));
+                MAIN.post(() -> showUpdateDialog(uiCtx, fTag, notes, fUrls));
                 if (cb != null) cb.onDone(true);
             } catch (Exception e) {
                 if (manual) toast(app, "检查更新失败: " + e.getMessage());
@@ -140,12 +145,50 @@ public final class UpdateChecker {
         });
     }
 
+    /**
+     * 从 Release 说明中提取所有"下载直链: <url>"行（可多行：Gitee 等国内直链），按出现顺序返回。
+     * 约定：发版脚本把直链以"下载直链: https://..."单独一行写入说明。
+     */
+    private static java.util.List<String> extractDirectUrls(String notes) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (notes == null || notes.isEmpty()) return out;
+        try {
+            for (String line : notes.split("\n")) {
+                String t = line.trim();
+                int idx = t.indexOf("下载直链");
+                if (idx < 0) continue;
+                int colon = t.indexOf(':', idx);
+                int cnColon = t.indexOf('：', idx);
+                if (colon < 0 || (cnColon >= 0 && cnColon < colon)) colon = cnColon;
+                if (colon < 0) continue;
+                String url = t.substring(colon + 1).trim();
+                if ((url.startsWith("http://") || url.startsWith("https://")) && !out.contains(url)) out.add(url);
+            }
+        } catch (Exception ignore) {}
+        return out;
+    }
+
+    /** 去掉说明里的标记行（"强制更新"标记、"下载直链"行），只保留给人看的更新内容 */
+    private static String stripMetaLines(String notes) {
+        if (notes == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String line : notes.split("\n")) {
+            String t = line.trim();
+            if (t.contains(FORCE_MARK)) continue;
+            if (t.contains("下载直链")) continue;
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(line);
+        }
+        return sb.toString().trim();
+    }
+
     /** 统一写更新日志（日志页可查，方便定位"无弹窗/无反应"原因） */
     private static void log(Context ctx, String title, String content) {
         try { LogRecorder.info(ctx, "UPDATE", title, content); } catch (Exception ignore) {}
     }
 
-    private static void showUpdateDialog(final Context ctx, final String version, final String notes, final String apkUrl) {
+    private static void showUpdateDialog(final Context ctx, final String version, final String notes,
+                                         final java.util.List<String> urls) {
         try {
             // Activity 已销毁/正在结束时不弹窗，避免 BadTokenException
             if (ctx instanceof Activity) {
@@ -156,12 +199,12 @@ public final class UpdateChecker {
             // 更新内容区域：可滚动的"更新内容"文本（去掉"强制更新"标记字样，仅作触发用）
             View content = View.inflate(ctx, R.layout.dialog_update_info, null);
             TextView tvNotes = content.findViewById(R.id.update_dialog_notes);
-            String cleanNotes = (notes == null) ? "" : notes.replace(FORCE_MARK, "").trim();
+            String cleanNotes = stripMetaLines(notes);
             tvNotes.setText(cleanNotes.isEmpty() ? "本次更新包含一些修复与优化。" : cleanNotes);
             AlertDialog.Builder b = new AlertDialog.Builder(ctx)
                     .setTitle("发现新版本 " + version)
                     .setView(content)
-                    .setPositiveButton("立即更新", (d, w) -> downloadAndInstall(ctx, apkUrl));
+                    .setPositiveButton("立即更新", (d, w) -> downloadAndInstall(ctx, urls));
             if (force) {
                 // 强制更新：不可取消、不提供“以后再说”
                 b.setCancelable(false);
@@ -174,7 +217,7 @@ public final class UpdateChecker {
         }
     }
 
-    private static void downloadAndInstall(final Context ctx, final String apkUrl) {
+    private static void downloadAndInstall(final Context ctx, final java.util.List<String> urls) {
         // 自定义主题弹窗（AlertDialog 自动套用 Theme.Chajianzhushou.Dialog，与 App 整体一致）
         final AlertDialog pd;
         final ProgressBar bar;
@@ -195,78 +238,95 @@ public final class UpdateChecker {
             return;
         }
         Threads.io().execute(() -> {
-            File dir = new File(ctx.getCacheDir(), "updates");
-            if (!dir.exists()) dir.mkdirs();
-            File part = new File(dir, "app-update.apk.part");
-            File apk = new File(dir, "app-update.apk");
-            try {
-                // 断点续传：上次未下完的部分继续，服务器返回 206 则追加写入
-                long done = part.exists() ? part.length() : 0L;
-                Request.Builder rb = new Request.Builder().url(apkUrl);
-                if (done > 0) rb.header("Range", "bytes=" + done + "-");
-                Response resp = HTTP.newCall(rb.build()).execute();
-                if (resp == null || !resp.isSuccessful()) {
-                    fail(pd, ctx, "下载失败（网络错误，稍后重试可断点续传）");
-                    return;
-                }
-                long total;
-                boolean append;
-                if (resp.code() == 206) {
-                    append = true;
-                    total = parseContentRangeTotal(resp.header("Content-Range", ""));
-                    long bodyLen = resp.body() != null ? resp.body().contentLength() : -1;
-                    if (total <= done) total = bodyLen > 0 ? done + bodyLen : -1;
-                } else {
-                    // 服务器不支持断点，从头下载
-                    append = false;
-                    total = resp.body() != null ? resp.body().contentLength() : -1;
-                    if (part.exists()) part.delete();
-                    done = 0;
-                }
-                if (total <= 0) total = -1;
-                long written = done;
-                long lastUi = 0L;
-                try (InputStream in = resp.body().byteStream();
-                     FileOutputStream fos = new FileOutputStream(part, append)) {
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = in.read(buf)) > 0) {
-                        fos.write(buf, 0, n);
-                        written += n;
-                        long now = System.currentTimeMillis();
-                        // 节流：未知总大小时至少 120ms 刷一次，避免高频刷新主线程
-                        if (now - lastUi >= 120L) {
-                            lastUi = now;
-                            updateProgress(pd, bar, tvStatus, tvPercent, written, total);
-                        }
-                    }
-                    fos.flush();
-                }
-                updateProgress(pd, bar, tvStatus, tvPercent, written, total);
-                // 下载完成：把 .part 改名为正式 APK（rename 失败时兜底复制）
-                if (!part.renameTo(apk)) {
-                    try (java.io.FileInputStream fin = new java.io.FileInputStream(part);
-                         FileOutputStream fout = new FileOutputStream(apk)) {
-                        byte[] b2 = new byte[8192];
-                        int m;
-                        while ((m = fin.read(b2)) > 0) fout.write(b2, 0, m);
-                        fout.flush();
-                    }
-                    part.delete();
-                }
-                // 安装前签名校验：防止下载包被替换
-                if (!verifyApkSignature(ctx, apk)) {
-                    fail(pd, ctx, "更新包签名校验失败，已取消安装");
-                    return;
-                }
-                MAIN.post(() -> {
-                    try { pd.dismiss(); } catch (Exception ignore) {}
-                    installApk(ctx, apk);
-                });
-            } catch (Exception e) {
-                fail(pd, ctx, "下载失败: " + e.getMessage());
+            // 按候选源顺序尝试：Gitee 直链 → GitHub 附件
+            for (int i = 0; i < urls.size(); i++) {
+                boolean ok = downloadOne(ctx, pd, bar, tvStatus, tvPercent, urls.get(i), i > 0);
+                if (ok) return;
             }
+            fail(pd, ctx, "下载失败（网络错误，稍后重试可断点续传）");
         });
+    }
+
+    /**
+     * 从单个地址下载并安装更新包；成功（含签名校验失败主动停止）返回 true，
+     * 网络/IO 异常返回 false，由调用方决定是否换备用源重试。
+     * @param fresh true=换源重试，丢弃旧的分片缓存从头下载
+     */
+    private static boolean downloadOne(final Context ctx, final AlertDialog pd, final ProgressBar bar,
+                                       final TextView tvStatus, final TextView tvPercent,
+                                       final String apkUrl, final boolean fresh) {
+        File dir = new File(ctx.getCacheDir(), "updates");
+        if (!dir.exists()) dir.mkdirs();
+        File part = new File(dir, "app-update.apk.part");
+        File apk = new File(dir, "app-update.apk");
+        try {
+            // 换源重试时丢弃旧源未下完的分片，避免 Range 续传与旧源缓存冲突
+            if (fresh && part.exists()) part.delete();
+            // 断点续传：上次未下完的部分继续，服务器返回 206 则追加写入
+            long done = part.exists() ? part.length() : 0L;
+            Request.Builder rb = new Request.Builder().url(apkUrl);
+            if (done > 0) rb.header("Range", "bytes=" + done + "-");
+            Response resp = HTTP.newCall(rb.build()).execute();
+            if (resp == null || !resp.isSuccessful()) return false;
+            long total;
+            boolean append;
+            if (resp.code() == 206) {
+                append = true;
+                total = parseContentRangeTotal(resp.header("Content-Range", ""));
+                long bodyLen = resp.body() != null ? resp.body().contentLength() : -1;
+                if (total <= done) total = bodyLen > 0 ? done + bodyLen : -1;
+            } else {
+                // 服务器不支持断点，从头下载
+                append = false;
+                total = resp.body() != null ? resp.body().contentLength() : -1;
+                if (part.exists()) part.delete();
+                done = 0;
+            }
+            if (total <= 0) total = -1;
+            long written = done;
+            long lastUi = 0L;
+            try (InputStream in = resp.body().byteStream();
+                 FileOutputStream fos = new FileOutputStream(part, append)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    fos.write(buf, 0, n);
+                    written += n;
+                    long now = System.currentTimeMillis();
+                    // 节流：未知总大小时至少 120ms 刷一次，避免高频刷新主线程
+                    if (now - lastUi >= 120L) {
+                        lastUi = now;
+                        updateProgress(pd, bar, tvStatus, tvPercent, written, total);
+                    }
+                }
+                fos.flush();
+            }
+            updateProgress(pd, bar, tvStatus, tvPercent, written, total);
+            // 下载完成：把 .part 改名为正式 APK（rename 失败时兜底复制）
+            if (!part.renameTo(apk)) {
+                try (java.io.FileInputStream fin = new java.io.FileInputStream(part);
+                     FileOutputStream fout = new FileOutputStream(apk)) {
+                    byte[] b2 = new byte[8192];
+                    int m;
+                    while ((m = fin.read(b2)) > 0) fout.write(b2, 0, m);
+                    fout.flush();
+                }
+                part.delete();
+            }
+            // 安装前签名校验：防止下载包被替换（校验失败不再换源重试，直接停止）
+            if (!verifyApkSignature(ctx, apk)) {
+                fail(pd, ctx, "更新包签名校验失败，已取消安装");
+                return true;
+            }
+            MAIN.post(() -> {
+                try { pd.dismiss(); } catch (Exception ignore) {}
+                installApk(ctx, apk);
+            });
+            return true;
+        } catch (Exception e) {
+            // 网络/IO 失败：交给外层决定是否换备用源重试
+            return false;
+        }
     }
 
     /** 更新下载进度：已知总大小显示百分比，未知则转不确定进度条并显示已下载大小 */
