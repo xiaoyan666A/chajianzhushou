@@ -76,10 +76,15 @@ public class LoginStore {
 
     public void saveToken(JSONObject result, long expiresAt) {
         if (result == null) return;
+        // 换新响应若未返回新的 refreshToken，保留旧的（避免把换新能力清空、退化成密码重登）
+        String newRefresh = result.optString("refreshToken", "");
+        if (newRefresh.isEmpty()) {
+            newRefresh = prefs.getString(KEY_REFRESH_TOKEN, "");
+        }
         prefs.edit()
                 .putString(KEY_ACCESS_TOKEN, result.optString("accessToken", ""))
                 .putString(KEY_USER_ID, result.optString("userId", ""))
-                .putString(KEY_REFRESH_TOKEN, result.optString("refreshToken", ""))
+                .putString(KEY_REFRESH_TOKEN, newRefresh)
                 .putString(KEY_UNION_ID, result.optString("unionId", ""))
                 .putString(KEY_YS_DT, result.optString("ysDt", ""))
                 .putString(KEY_STAFF_CODE, result.optString("staffCode", ""))

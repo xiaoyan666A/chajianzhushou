@@ -64,9 +64,8 @@ public class DirectApiClient {
     private final OkHttpClient client;
     private final Context appContext;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private String accessToken;
-    private String userId;
-    private long tokenExpiresAt;
+    /** 全局认证锁：所有"换新/重登"串行执行，防止多实例并发刷新互相覆盖 */
+    private static final Object AUTH_LOCK = new Object();
 
     public DirectApiClient() {
         this(MainActivity.getAppContext());
@@ -182,11 +181,9 @@ public class DirectApiClient {
             // 验证码登录没有密码：保留原有密码（若有），仅更新手机号与 token
             store.saveCredentials(phone, store.getPassword());
             store.saveToken(result, expiresAt);
-            accessToken = result.optString("accessToken", "");
-            userId = result.optString("userId", "");
-            tokenExpiresAt = expiresAt;
-            Log.d(TAG, "验证码登录成功, userId=" + userId);
-            try { LogRecorder.info(appContext, "Login", "验证码登录成功", "userId=" + userId); } catch (Exception ignore) {}
+            String freshUserId = result.optString("userId", "");
+            Log.d(TAG, "验证码登录成功, userId=" + freshUserId);
+            try { LogRecorder.info(appContext, "Login", "验证码登录成功", "userId=" + freshUserId); } catch (Exception ignore) {}
             return result;
         }
     }
@@ -253,34 +250,36 @@ public class DirectApiClient {
             LoginStore store = new LoginStore(appContext);
             store.saveCredentials(username.trim(), password);
             store.saveToken(result, expiresAt);
-            accessToken = result.optString("accessToken", "");
-            userId = result.optString("userId", "");
-            tokenExpiresAt = expiresAt;
-            Log.d(TAG, "登录成功, userId=" + userId);
-            try { LogRecorder.info(appContext, "Login", "登录成功", "userId=" + userId); } catch (Exception ignore) {}
+            String freshUserId = result.optString("userId", "");
+            Log.d(TAG, "登录成功, userId=" + freshUserId);
+            try { LogRecorder.info(appContext, "Login", "登录成功", "userId=" + freshUserId); } catch (Exception ignore) {}
             return result;
         }
     }
 
-    private synchronized JSONObject ensureLogin() throws Exception {
+    private JSONObject ensureLogin() throws Exception {
+        synchronized (AUTH_LOCK) {
+            return ensureLoginLocked();
+        }
+    }
+
+    /**
+     * 认证统一入口（全局锁内执行）：
+     * 所有请求一律以 LoginStore 存储的 token 为准；失效/临近到期时 refreshToken 无感换新（写回存储），
+     * 换新失败再用保存的账号密码自动重登（写回存储）。多实例共享同一把锁，避免并发刷新互相覆盖。
+     */
+    private JSONObject ensureLoginLocked() throws Exception {
         long now = System.currentTimeMillis();
-        if (accessToken != null && accessToken.length() > 0 && tokenExpiresAt > now) {
+        LoginStore store = new LoginStore(appContext);
+        if (store.hasValidToken(now)) {
             // 本地仍未到期，但临近到期（<2小时）时提前用 refreshToken 换新，
             // 避免网关侧实际有效期更短、带着已失效的 token 去查询
-            if (tokenExpiresAt - now < LoginStore.TOKEN_REFRESH_AHEAD_MS) {
+            if (store.getTokenExpiresAt() - now < LoginStore.TOKEN_REFRESH_AHEAD_MS) {
                 if (tryRefreshToken()) return buildAuthResult();
             }
             return buildAuthResult();
         }
-        // 优先使用缓存的 token（进程重启后避免每次启动都重新登录）
-        LoginStore store = new LoginStore(appContext);
-        if (store.hasValidToken(now)) {
-            accessToken = store.getAccessToken();
-            userId = store.getUserId();
-            tokenExpiresAt = store.getTokenExpiresAt();
-            return buildAuthResult();
-        }
-        // 缓存 token 失效：先尝试用 refreshToken 无感换新（借鉴官方 refreshToken 机制）
+        // 存储 token 失效：先尝试用 refreshToken 无感换新（借鉴官方 refreshToken 机制）
         if (tryRefreshToken()) {
             return buildAuthResult();
         }
@@ -291,15 +290,16 @@ public class DirectApiClient {
         if (store.getPassword().isEmpty()) {
             throw new Exception("登录已失效，请重新登录");
         }
-        return loginInternal(store.getUsername(), store.getPassword());
+        loginInternal(store.getUsername(), store.getPassword());
+        return buildAuthResult();
     }
 
-    /** 组装本次登录/缓存的认证信息（补充 unionId / ysDt 兜底值） */
+    /** 组装本次请求的认证信息（一律从存储读取，保证所有界面用同一份最新 token） */
     private JSONObject buildAuthResult() throws Exception {
-        JSONObject result = new JSONObject();
-        result.put("accessToken", accessToken == null ? "" : accessToken);
-        result.put("userId", userId == null ? "" : userId);
         LoginStore store = new LoginStore(appContext);
+        JSONObject result = new JSONObject();
+        result.put("accessToken", store.getAccessToken());
+        result.put("userId", store.getUserId());
         result.put("unionId", store.getUnionId().length() > 0 ? store.getUnionId() : DEFAULT_UNION_ID);
         result.put("ysDt", store.getYsDt().length() > 0 ? store.getYsDt() : DEFAULT_YS_DT);
         return result;
@@ -366,10 +366,7 @@ public class DirectApiClient {
                 if (newToken.length() == 0) return false;
                 long expiresAt = System.currentTimeMillis() + LoginStore.TOKEN_TTL_MS;
                 store.saveToken(result, expiresAt);
-                accessToken = newToken;
-                userId = result.optString("userId", store.getUserId());
-                tokenExpiresAt = expiresAt;
-                Log.d(TAG, "refreshToken 换新成功, userId=" + userId);
+                Log.d(TAG, "refreshToken 换新成功, userId=" + store.getUserId());
                 try { LogRecorder.info(appContext, "DirectApi", "Token刷新", "refreshToken 无感换新成功"); } catch (Exception ignore) {}
                 return true;
             }
@@ -687,28 +684,27 @@ public class DirectApiClient {
      * token 失效后的重登（synchronized 防并发）：清旧 token → refreshToken 无感换新 → 失败用保存凭据密码登录。
      * 成功返回 true；仅当 refresh 与密码登录都失败（或密码为空）才返回 false。
      */
-    private synchronized boolean reloginAfterTokenExpired() {
-        accessToken = null;
-        userId = null;
-        tokenExpiresAt = 0;
-        try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
-        if (tryRefreshToken()) {
-            return true;
-        }
-        // refreshToken 也失效：用保存的账号密码自动重新登录（密码为空=验证码登录，需手动重登）
-        LoginStore store = new LoginStore(appContext);
-        if (store.hasCredentials() && !store.getPassword().isEmpty()) {
-            try {
-                Log.d(TAG, "refresh 失败，尝试用保存的凭据自动重新登录");
-                try { LogRecorder.info(appContext, "DirectApi", "自动重新登录", "refresh失败，使用保存的账号密码重登"); } catch (Exception ignore) {}
-                loginInternal(store.getUsername(), store.getPassword());
+    private boolean reloginAfterTokenExpired() {
+        synchronized (AUTH_LOCK) {
+            try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
+            if (tryRefreshToken()) {
                 return true;
-            } catch (Exception le) {
-                Log.w(TAG, "凭据自动重新登录失败: " + le.getMessage());
-                try { LogRecorder.info(appContext, "DirectApi", "自动重新登录失败", le.getMessage()); } catch (Exception ignore) {}
             }
+            // refreshToken 也失效：用保存的账号密码自动重新登录（密码为空=验证码登录，需手动重登）
+            LoginStore store = new LoginStore(appContext);
+            if (store.hasCredentials() && !store.getPassword().isEmpty()) {
+                try {
+                    Log.d(TAG, "refresh 失败，尝试用保存的凭据自动重新登录");
+                    try { LogRecorder.info(appContext, "DirectApi", "自动重新登录", "refresh失败，使用保存的账号密码重登"); } catch (Exception ignore) {}
+                    loginInternal(store.getUsername(), store.getPassword());
+                    return true;
+                } catch (Exception le) {
+                    Log.w(TAG, "凭据自动重新登录失败: " + le.getMessage());
+                    try { LogRecorder.info(appContext, "DirectApi", "自动重新登录失败", le.getMessage()); } catch (Exception ignore) {}
+                }
+            }
+            return false;
         }
-        return false;
     }
     private JSONObject doQueryPackages(String search, String type, boolean pendingOnly) throws Exception {
         Log.d(TAG, "直接查询包裹: search=" + search + " type=" + type);
@@ -822,9 +818,6 @@ public class DirectApiClient {
                     try { LogRecorder.error(appContext, "DirectApi", "查询失败", msg); } catch (Exception ignore) {}
                     // 检测token过期
                     if (msg.contains("token") || msg.contains("登录") || msg.contains("未授权") || msg.contains("过期") || msg.contains("无效") || msg.contains("令牌")) {
-                        accessToken = null;
-                        userId = null;
-                        tokenExpiresAt = 0;
                         // 仅清 accessToken（保留 refreshToken），下次 ensureLogin 先无感换新，失败再走密码登录
                         try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
                         // token 失效：抛出专用异常，由 queryPackages 外层自动 refresh 后重试
@@ -1310,9 +1303,8 @@ public class DirectApiClient {
                 // token 过期检测：命中关键词则清缓存，下次自动重登
                 if (msg.contains("token") || msg.contains("登录") || msg.contains("未授权")
                         || msg.contains("过期") || msg.contains("无效") || msg.contains("令牌")) {
-                    accessToken = null;
-                    userId = null;
-                    tokenExpiresAt = 0;
+                    // token 失效：清存储 accessToken（保留 refreshToken），下次 ensureLogin 自动换新/重登
+                    try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
                 }
                 final String fMsg = msg;
                 mainHandler.post(() -> callback.onError(fMsg));
@@ -1417,9 +1409,8 @@ public class DirectApiClient {
                 if (msg.length() == 0) msg = body.optString("message", "未知错误");
                 if (msg.contains("token") || msg.contains("登录") || msg.contains("未授权")
                         || msg.contains("过期") || msg.contains("无效") || msg.contains("令牌")) {
-                    accessToken = null;
-                    userId = null;
-                    tokenExpiresAt = 0;
+                    // token 失效：清存储 accessToken（保留 refreshToken），下次 ensureLogin 自动换新/重登
+                    try { new LoginStore(appContext).clearAccessToken(); } catch (Exception ignore) {}
                 }
                 final String fMsg = msg;
                 mainHandler.post(() -> callback.onError(fMsg));

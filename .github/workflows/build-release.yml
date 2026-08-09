@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -44,7 +46,16 @@ jobs:
           TAG="v${VERSION}"
           APK=app/build/outputs/apk/release/app-release.apk
           test -f "$APK" || { echo "APK not found: $APK"; exit 1; }
+          # 生成更新内容：上一个 Release 到本次之间的提交记录
+          NOTES_FILE=/tmp/release_notes.md
+          printf '查件助手自动构建版本 v%s（GitHub Actions）\n\n## 更新内容\n' "$VERSION" > "$NOTES_FILE"
+          PREV_TAG=$(gh release list --limit 2 --json tagName --jq '.[1].tagName // empty' 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then
+            git log --oneline --no-merges "$PREV_TAG"..HEAD 2>/dev/null | sed 's/^/- /' >> "$NOTES_FILE" || true
+          else
+            echo "- 首次发布" >> "$NOTES_FILE"
+          fi
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$TAG" "$APK" \
             --title "v${VERSION}" \
-            --notes "查件助手自动构建版本 v${VERSION}（GitHub Actions）"
+            --notes-file "$NOTES_FILE"

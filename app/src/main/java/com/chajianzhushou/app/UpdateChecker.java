@@ -11,6 +11,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -152,9 +153,14 @@ public final class UpdateChecker {
                 if (a.isFinishing() || a.isDestroyed()) return;
             }
             boolean force = notes != null && notes.contains(FORCE_MARK);
+            // 更新内容区域：可滚动的"更新内容"文本（去掉"强制更新"标记字样，仅作触发用）
+            View content = View.inflate(ctx, R.layout.dialog_update_info, null);
+            TextView tvNotes = content.findViewById(R.id.update_dialog_notes);
+            String cleanNotes = (notes == null) ? "" : notes.replace(FORCE_MARK, "").trim();
+            tvNotes.setText(cleanNotes.isEmpty() ? "本次更新包含一些修复与优化。" : cleanNotes);
             AlertDialog.Builder b = new AlertDialog.Builder(ctx)
                     .setTitle("发现新版本 " + version)
-                    .setMessage((notes == null || notes.trim().isEmpty()) ? "是否立即下载更新？" : notes.trim())
+                    .setView(content)
                     .setPositiveButton("立即更新", (d, w) -> downloadAndInstall(ctx, apkUrl));
             if (force) {
                 // 强制更新：不可取消、不提供“以后再说”

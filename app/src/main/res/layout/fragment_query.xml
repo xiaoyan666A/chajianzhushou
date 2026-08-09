@@ -166,6 +166,8 @@
                     android:textCursorDrawable="@null"
                     android:hint="请输入手机尾号"
                     android:singleLine="true"
+                    android:inputType="number"
+                    android:digits="0123456789"
                     android:imeOptions="actionSearch"
                     android:paddingHorizontal="@dimen/spacing_sm" />
             </LinearLayout>
